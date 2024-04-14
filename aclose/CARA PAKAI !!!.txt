@@ -1,0 +1,8 @@
+BUKA INI 
+https://boss.citius.co.id/public/api/get_closed_ticket
+
+SALIN ISI NYA KE list_ticket.txt
+
+LALU SAVE 
+
+jalankan start.bat
