@@ -60,71 +60,72 @@ def run():
 	has_cookie = 0
 	driver_d.get("https://app.slmugmandiri.co.id/sistrack_new/")
 	login(driver_d)
-	get_tiket = get_data_api('https://boss.citius.co.id/public/api/get_pending_ticket')
-	for data_ticket in get_tiket:
+	while True:
+		get_tiket = get_data_api('https://boss.citius.co.id/public/api/get_pending_ticket')
+		for data_ticket in get_tiket:
 
-		try:
-			if data_ticket["status"] == "t":
-				driver_d.get("https://app.slmugmandiri.co.id/sistrack_new/Home")
-		
-				element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[1]/div[2]/div/label/input", 30, driver_d)
-				driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[1]/div[2]/div/label/input").send_keys(data_ticket["ticket_ebs"]+"\n")
+			try:
+				if data_ticket["status"] == "t":
+					driver_d.get("https://app.slmugmandiri.co.id/sistrack_new/Home")
+			
+					element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[1]/div[2]/div/label/input", 30, driver_d)
+					driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[1]/div[2]/div/label/input").send_keys(data_ticket["ticket_ebs"]+"\n")
 
-				while True:
-					sleep(1)
-					try:
-						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[2]/div/table/tbody/tr/td[3]/h3/span")
-						print("ADA")
-						break
-					except Exception as e:
-						# print(e)
-						pass
-						
+					while True:
+						sleep(1)
+						try:
+							driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[2]/div/table/tbody/tr/td[3]/h3/span")
+							print("ADA")
+							break
+						except Exception as e:
+							# print(e)
+							pass
+							
 
-				if driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[2]/div/table/tbody/tr/td[3]/h3/span").text != "SUSPEND":
-					driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[2]/div/table/tbody/tr/td[1]/a").click()
-					element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[3]/div/div/a", 30, driver_d)
-					sleep(2)
-					btn_suspen = driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[3]/div/div/a");
-					if "Suspend" in btn_suspen.text:
-						btn_suspen.click()
-						while True:
-							try:
-								element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[1]/div[2]/select", 30, driver_d)
-								while True:
+					if driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[2]/div/table/tbody/tr/td[3]/h3/span").text != "SUSPEND":
+						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[2]/div/table/tbody/tr/td[1]/a").click()
+						element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[3]/div/div/a", 30, driver_d)
+						sleep(2)
+						btn_suspen = driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[3]/div/div/a");
+						if "Suspend" in btn_suspen.text:
+							btn_suspen.click()
+							while True:
+								try:
+									element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[1]/div[2]/select", 30, driver_d)
+									while True:
+										sleep(1)
+										if driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[1]/div[1]/textarea").get_attribute("value") != data_ticket["message"]:
+											driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[1]/div[1]/textarea").send_keys(Keys.CONTROL, 'a',Keys.BACKSPACE)
+											driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[1]/div[1]/textarea").send_keys(data_ticket["message"])
+										else:
+											break
+									sleep(2)
+									driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[1]/div[2]/select").click();
 									sleep(1)
-									if driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[1]/div[1]/textarea").get_attribute("value") != data_ticket["message"]:
-										driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[1]/div[1]/textarea").send_keys(Keys.CONTROL, 'a',Keys.BACKSPACE)
-										driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[1]/div[1]/textarea").send_keys(data_ticket["message"])
-									else:
-										break
-								sleep(2)
-								driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[1]/div[2]/select").click();
-								sleep(1)
-								if data_ticket['category'] == 1:
-									driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[1]/div[2]/select/option[2]").click()
-								if data_ticket['category'] == 2:
-									driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[1]/div[2]/select/option[3]").click()
-								if data_ticket['category'] == 3:
-									driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[1]/div[2]/select/option[4]").click()
-								if data_ticket['category'] == 4:
-									driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[1]/div[2]/select/option[5]").click()
-								sleep(1)
-								driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[2]/button[2]").click()
-								break
-							except Exception as e:
-								# print(e)
-								pass
+									if data_ticket['category'] == 1:
+										driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[1]/div[2]/select/option[2]").click()
+									if data_ticket['category'] == 2:
+										driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[1]/div[2]/select/option[3]").click()
+									if data_ticket['category'] == 3:
+										driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[1]/div[2]/select/option[4]").click()
+									if data_ticket['category'] == 4:
+										driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[1]/div[2]/select/option[5]").click()
+									sleep(1)
+									driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[5]/div/div/form/div[2]/button[2]").click()
+									break
+								except Exception as e:
+									# print(e)
+									pass
 
-					element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[1]/div/div", 30, driver_d)
-					shot_api(data_ticket["ticket_ebs"],data_ticket["message"])
+						element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[1]/div/div", 30, driver_d)
+						shot_api(data_ticket["ticket_ebs"],data_ticket["message"])
+					else:
+						shot_api(data_ticket["ticket_ebs"],data_ticket["message"])
 				else:
-					shot_api(data_ticket["ticket_ebs"],data_ticket["message"])
-			else:
-				open("ticket_error.txt","a").writelines(data_ticket["ticket_ebs"]+" TICKET TIDAK WARAS\n")
-		except Exception as e:
-			# print(e)
-			open("ticket_error.txt","a").writelines(data_ticket["ticket_ebs"]+" ERROR SAAT PROSES[2]\n")
+					open("ticket_error.txt","a").writelines(data_ticket["ticket_ebs"]+" TICKET TIDAK WARAS\n")
+			except Exception as e:
+				# print(e)
+				open("ticket_error.txt","a").writelines(data_ticket["ticket_ebs"]+" ERROR SAAT PROSES[2]\n")
 			
 # def check_whitelist_sender_email(email):
 # 	url = 'https://boss.citius.co.id/api/check-whitelist-email'

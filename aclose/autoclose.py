@@ -224,7 +224,7 @@ def login(driver_d):
 	element_presence(By.XPATH, "/html/body/form/div/input[1]", 30, driver_d)
 	sleep(3)
 	try:
-		driver_d.find_element(By.XPATH, "/html/body/form/div/input[1]").send_keys("CC-CTS")
+		driver_d.find_element(By.XPATH, "/html/body/form/div/input[1]").send_keys("CC-CTS 3")
 		element_presence(By.XPATH, "/html/body/form/div/input[2]", 30, driver_d)
 		sleep(2)
 		driver_d.find_element(By.XPATH, "/html/body/form/div/input[2]").send_keys("citius123\n")

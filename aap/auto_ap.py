@@ -62,7 +62,7 @@ def run():
 	login(driver_d)
 	while True:
 		sleep(10)
-		print("START JOb")
+		print("START JOB")
 		get_tiket = get_data_api('https://boss.citius.co.id/public/api/get_open_ticket')
 		for tiket in get_tiket:
 			try:
@@ -79,7 +79,9 @@ def run():
 					except Exception as e:
 						break
 
-				if driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[2]/div/table/tbody/tr[1]/td[3]/h3/span").text == "OPEN":
+				element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[2]/div/table/tbody/tr[1]/td[3]/h3/span", 30, driver_d)
+				print(str(tiket) + " | " + driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[2]/div/table/tbody/tr[1]/td[3]/h3/span").text)
+				if "OPEN" in driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[2]/div/table/tbody/tr[1]/td[3]/h3/span").text:
 					driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[2]/div/table/tbody/tr/td[1]/a").click()
 					element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[1]/td[2]", 30, driver_d)
 					sleep(2)
@@ -90,7 +92,7 @@ def run():
 					sleep(2)
 				shot_url("https://boss.citius.co.id/public/api/delete_proccessed_appointment/"+str(tiket))
 			except Exception as e:
-				open("ticket_error.txt","a").writelines(str(tiket))
+				print(e)
 			
 # def check_whitelist_sender_email(email):
 # 	url = 'https://boss.citius.co.id/api/check-whitelist-email'
