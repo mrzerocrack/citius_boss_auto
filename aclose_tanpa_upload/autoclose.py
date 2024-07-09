@@ -32,7 +32,7 @@ from PIL import Image
 #DATE TIME GMT DAN LOCAL
 # print("\nGMT: "+time.strftime("%a, %d %b %Y %I:%M:%S %p %Z", time.gmtime()))
 # print("Local: "+strftime("%a, %d %b %Y %I:%M:%S %p %Z\n"))
-task_error = False
+stop = False
 def shot_api(incident_id, atm_id, problem):
 	print('shot_api ',incident_id,atm_id,problem)
 	url = 'https://boss.citius.co.id/api/create-ticket'
@@ -80,19 +80,19 @@ def run():
 	login(driver_d)
 	line_no = 0
 	for data in dataframe1:
-		line_no += 1
-		ebs = data[2].value
-		reason = data[3].value
-		if conti_last_proc:
-			if str(line_no) == last_proc:
-				conti_last_proc = False
-			else:
-				print("SKIPPING LINE",line_no)
-				continue
-		if "-" not in ebs:
-			continue
-		print("PROCCESSING ",ebs)
 		try:
+			line_no += 1
+			ebs = data[2].value
+			reason = data[3].value
+			if conti_last_proc:
+				if str(line_no) == last_proc:
+					conti_last_proc = False
+				else:
+					print("SKIPPING LINE",line_no)
+					continue
+			if "-" not in ebs:
+				continue
+			print("PROCCESSING ",ebs)
 			driver_d.get("https://app.slmugmandiri.co.id/sistrack_new/Home")
 	
 			element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[1]/div[2]/div/label/input", 30, driver_d)
@@ -155,13 +155,22 @@ def run():
 				driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[1]/div[2]/table/tbody/tr[4]/td[2]/div/div[1]/select/option[6]").click()
 				driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[1]/div[2]/table/tbody/tr[4]/td[2]/div/div[2]/button").click()
 				element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[1]/div/div", 30, driver_d)
+			open("last_line_proccessed.txt","w").writelines(str(line_no))
+
+			if int(line_no) == int(dataframe1.max_row):
+				stop = True
+				print("sini", stop)
+				driver_d.quit()
+				print("DONE")
+				open("last_line_proccessed.txt","w").writelines("1")
+				open("log_status.txt","w").writelines("DONE")
+				break
+
 		except Exception as e:
 			open("ticket_error.txt","a").writelines(ebs+"-EXCEPTION\n"+str(e)+"\n\n")
-			task_error = True
 			driver_d.quit()
 			break
 
-		open("last_line_proccessed.txt","w").writelines(str(line_no))
 			
 # def check_whitelist_sender_email(email):
 # 	url = 'https://boss.citius.co.id/api/check-whitelist-email'
@@ -238,11 +247,14 @@ def login(driver_d):
 	except Exception as e:
 		print(e)
 
+
 while True:
 	open("log_status.txt","w").writelines("ONPROGRESS")
-	run()
-	if task_error == False:
-		print("DONE")
-		open("last_line_proccessed.txt","w").writelines("1")
-		open("log_status.txt","w").writelines("DONE")
-		break
+	try:
+		run()
+		progres = open("log_status.txt","r").readline()
+		if progres == "DONE":
+			break
+	except Exception as e:
+		print(e)
+		input("error")
