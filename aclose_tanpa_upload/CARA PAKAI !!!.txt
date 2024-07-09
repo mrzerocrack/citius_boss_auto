@@ -1,0 +1,8 @@
+copy file excel list ticketnya ke dalam folder ini. 
+pastikan nama file excelnya doc.xlsx
+
+HAPUS FILE last_line_processed.txt
+
+jalankan start.bat
+
+kalo window/cmd nya ke close berarti proses sudah selesai
