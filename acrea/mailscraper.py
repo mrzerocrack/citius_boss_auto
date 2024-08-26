@@ -254,7 +254,7 @@ def get_login_email():
 	return json.loads(x.text)
 
 def get_data_xpath():
-	url = 'http://iot.citius.co.id/api/mailscrapper_get_xpath'
+	url = 'http://boss.citius.co.id/public/api/mailscrapper_get_xpath'
 	myobj = {}
 	x = requests.post(url, data = myobj)
 	x.close()
