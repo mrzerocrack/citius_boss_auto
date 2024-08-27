@@ -176,7 +176,7 @@ def run():
 					print("ERROR_CODE : subject_mail_list 001 \n contact your IT Staff")
 					sleep(5)
 				try:
-					if check_whitelist_sender_email(driver_d.find_element(By.XPATH, data_xpath['sender_mail_list'].replace("replace_with_detail_row", str(x+1))).get_attribute('email')) and 'New Incident' in subject_email.text:
+					if check_whitelist_sender_email(driver_d.find_element(By.XPATH, data_xpath['sender_mail_list'].replace("replace_with_detail_row", str(x+1))).get_attribute('email')) and 'New Incident' in subject_email.text or 'TIKET' in subject_email.text:
 						print('class subject ', driver_d.find_element(By.XPATH, data_xpath['sender_mail_list'].replace("replace_with_detail_row", str(x+1))).get_attribute("class"))
 						try:
 							if driver_d.find_element(By.XPATH, data_xpath['sender_mail_list'].replace("replace_with_detail_row", str(x+1))).get_attribute("class") == 'zF':
@@ -254,7 +254,7 @@ def get_login_email():
 	return json.loads(x.text)
 
 def get_data_xpath():
-	url = 'http://boss.citius.co.id/public/api/mailscrapper_get_xpath'
+	url = 'http://iot.citius.co.id/api/mailscrapper_get_xpath'
 	myobj = {}
 	x = requests.post(url, data = myobj)
 	x.close()
