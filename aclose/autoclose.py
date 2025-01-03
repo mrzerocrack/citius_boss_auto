@@ -28,13 +28,14 @@ from PIL import Image
 import tkinter as tk
 from tkinter import messagebox
 import threading
+import win32api
+import win32gui
+import subprocess
 
 
 #DATE TIME GMT DAN LOCAL
 # print("\nGMT: "+time.strftime("%a, %d %b %Y %I:%M:%S %p %Z", time.gmtime()))
 # print("Local: "+strftime("%a, %d %b %Y %I:%M:%S %p %Z\n"))
-
-is_login = False
 
 def shot_api(incident_id, atm_id, problem):
 	print('shot_api ',incident_id,atm_id,problem)
@@ -61,13 +62,12 @@ def run():
 	#chrome_options.add_argument('--no-sandbox')
 	#chrome_options.add_argument('--headless')
 	#chrome_options.add_argument('--proxy-server='+input_proxy.split("-")[0])
+	global driver_d
 	driver_d = Chrome(options=chrome_options)
 	has_cookie = 0
 	driver_d.get("https://app.slmugmandiri.co.id/sistrack_new/")
 	login(driver_d)
 	show_notif_captcha()
-	while is_login == False:
-		sleep(1)
 	with open('list_tiket.txt', 'r') as f:
 		for line in f:
 			data_ticket = get_data_api('https://boss.citius.co.id/public/api/tes/'+line.strip())
@@ -165,6 +165,9 @@ def run():
 				open("ticket_error.txt","a").writelines(line+"-EXCEPTION\n"+str(e)+"\n\n")
 
 			open("last_ticket_proccessed.txt","w").writelines(line)
+   
+	win32api.MessageBox(0, "AUTO Selesai", "INFO", 0x00001000)
+	exit_app()
 			
 # def check_whitelist_sender_email(email):
 # 	url = 'https://boss.citius.co.id/api/check-whitelist-email'
@@ -232,7 +235,6 @@ def post_data_api(url):
 
 def login(driver_d):
 	element_presence(By.XPATH, "/html/body/div[2]/form/div[1]/input", 30, driver_d)
-	sleep(3)
 	try:
 		driver_d.find_element(By.XPATH, "/html/body/div[2]/form/div[1]/input").send_keys("CC CTS 3")
 		element_presence(By.XPATH, "/html/body/div[2]/form/div[2]/input", 30, driver_d)
@@ -253,11 +255,14 @@ def show_notif_captcha():
 	# # Tombol OK
 	# ok_button = tk.Button(notification, text="OK", command=lambda: is_login_(notification))
 	# ok_button.pack()
-	tk.messagebox.showinfo("Informasi", "Login manual, klo dah sukses login klik start autoclose")
+	win32api.MessageBox(0, "Login manual, klo dah sukses login klik OK dibawah", "INFO", 0x00001000)
 
-def start_auto():
-	global is_login
-	is_login = True
+def exit_app():
+	try:
+		driver_d.quit()
+	except Exception as e:
+		pass
+	window.destroy()
 
 status_thread = threading.Thread(target=run)
 status_thread.daemon = True  # Agar thread mati ketika program utama selesai
@@ -265,9 +270,7 @@ status_thread.start()
 
 window = tk.Tk()
 window.title("Auto Close")
-window.geometry("800x600")
-start_button = tk.Button(window, text="Start AUTOCLOSE", command=start_auto)
-start_button.pack()
-exit_button = tk.Button(window, text="exit AUTOCLOSE", command=exit)
+window.geometry("50x50")
+exit_button = tk.Button(window, text="exit AUTOCLOSE", command=exit_app)
 exit_button.pack()
 window.mainloop()

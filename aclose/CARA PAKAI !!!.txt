@@ -1,8 +1,8 @@
-BUKA INI 
+1.Pastikan file list_tiket.txt ada, jika tidak ada dibuat dulu filenya
+
+2.BUKA INI 
 https://boss.citius.co.id/public/api/get_closed_ticket
 
-SALIN ISI NYA KE list_ticket.txt
+3.SALIN ISI NYA KE list_ticket.txt LALU SAVE 
 
-LALU SAVE 
-
-jalankan start.bat
+4. jalankan start.bat
