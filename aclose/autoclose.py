@@ -25,11 +25,16 @@ import psutil
 import json,urllib.request
 import pickle
 from PIL import Image
+import tkinter as tk
+from tkinter import messagebox
+import threading
 
 
 #DATE TIME GMT DAN LOCAL
 # print("\nGMT: "+time.strftime("%a, %d %b %Y %I:%M:%S %p %Z", time.gmtime()))
 # print("Local: "+strftime("%a, %d %b %Y %I:%M:%S %p %Z\n"))
+
+is_login = False
 
 def shot_api(incident_id, atm_id, problem):
 	print('shot_api ',incident_id,atm_id,problem)
@@ -49,6 +54,7 @@ def element_presence(by,by_val,time, driver):
 		pass
 
 def run():
+	global is_login
 	# tab = sys.argv[1]
 	chrome_options = Options()
 	chrome_options.add_argument("--incognito")
@@ -59,6 +65,9 @@ def run():
 	has_cookie = 0
 	driver_d.get("https://app.slmugmandiri.co.id/sistrack_new/")
 	login(driver_d)
+	show_notif_captcha()
+	while is_login == False:
+		sleep(1)
 	with open('list_tiket.txt', 'r') as f:
 		for line in f:
 			data_ticket = get_data_api('https://boss.citius.co.id/public/api/tes/'+line.strip())
@@ -222,14 +231,43 @@ def post_data_api(url):
 			sleep(5)
 
 def login(driver_d):
-	element_presence(By.XPATH, "/html/body/form/div/input[1]", 30, driver_d)
+	element_presence(By.XPATH, "/html/body/div[2]/form/div[1]/input", 30, driver_d)
 	sleep(3)
 	try:
-		driver_d.find_element(By.XPATH, "/html/body/form/div/input[1]").send_keys("CC CTS 3")
-		element_presence(By.XPATH, "/html/body/form/div/input[2]", 30, driver_d)
+		driver_d.find_element(By.XPATH, "/html/body/div[2]/form/div[1]/input").send_keys("CC CTS 3")
+		element_presence(By.XPATH, "/html/body/div[2]/form/div[2]/input", 30, driver_d)
 		sleep(2)
-		driver_d.find_element(By.XPATH, "/html/body/form/div/input[2]").send_keys("123456\n")
+		driver_d.find_element(By.XPATH, "/html/body/div[2]/form/div[2]/input").send_keys("123456")
 	except Exception as e:
 		print(e)
 
-run()
+def show_notif_captcha():
+	# notification = tk.Toplevel()
+	# notification.title("Peringatan")
+	# notification.geometry("300x100")
+
+	# # Label untuk pesan
+	# label = tk.Label(notification, text="klik OK kalau sudah login")
+	# label.pack(pady=10)
+
+	# # Tombol OK
+	# ok_button = tk.Button(notification, text="OK", command=lambda: is_login_(notification))
+	# ok_button.pack()
+	tk.messagebox.showinfo("Informasi", "Login manual, klo dah sukses login klik start autoclose")
+
+def start_auto():
+	global is_login
+	is_login = True
+
+status_thread = threading.Thread(target=run)
+status_thread.daemon = True  # Agar thread mati ketika program utama selesai
+status_thread.start()
+
+window = tk.Tk()
+window.title("Auto Close")
+window.geometry("800x600")
+start_button = tk.Button(window, text="Start AUTOCLOSE", command=start_auto)
+start_button.pack()
+exit_button = tk.Button(window, text="exit AUTOCLOSE", command=exit)
+exit_button.pack()
+window.mainloop()
