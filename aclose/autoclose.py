@@ -37,14 +37,6 @@ import subprocess
 # print("\nGMT: "+time.strftime("%a, %d %b %Y %I:%M:%S %p %Z", time.gmtime()))
 # print("Local: "+strftime("%a, %d %b %Y %I:%M:%S %p %Z\n"))
 
-def shot_api(incident_id, atm_id, problem):
-	print('shot_api ',incident_id,atm_id,problem)
-	url = 'https://boss.citius.co.id/api/create-ticket'
-	myobj = {'incident_id':incident_id, 'atm_id':atm_id, 'problem':problem}
-	x = requests.post(url, data = myobj)
-	x.close()
-	return x.text
-
 def element_presence(by,by_val,time, driver):
 	element_present = EC.presence_of_element_located((by, by_val))
 	try:
@@ -65,20 +57,24 @@ def run():
 	global driver_d
 	driver_d = Chrome(options=chrome_options)
 	has_cookie = 0
-	driver_d.get("https://app.slmugmandiri.co.id/sistrack_new/")
+	driver_d.get("https://sistrack.ugarta.co.id/sistrack_new/")
 	login(driver_d)
 	show_notif_captcha()
 	with open('list_tiket.txt', 'r') as f:
 		for line in f:
-			data_ticket = get_data_api('https://boss.citius.co.id/public/api/tes/'+line.strip())
+			data_ticket = get_data_api('https://1gen.citius.co.id/api/shintei/autotools/get_report_item_value_closed_ticket/'+line.strip())
+			print("MASUK PROSES")
 
 			try:
-				if data_ticket["status"] == "t":
-					driver_d.get("https://app.slmugmandiri.co.id/sistrack_new/Home")
-					if data_ticket["status_foto"] == "t":
-						download("https://boss.citius.co.id/uploads/foto/"+data_ticket["foto"], data_ticket["ticket_ebs"] + data_ticket["foto"])
-						path_foto = os.getcwd()+"\\"+data_ticket["ticket_ebs"]+data_ticket["foto"]
-			
+				foto_file_name = None
+				if data_ticket["status"] == 1:
+					driver_d.get("https://sistrack.ugarta.co.id/sistrack_new/")
+					if data_ticket["status_foto"] == 1:
+						print("MASUK DOWNLOAD")
+						foto_file_name = download(data_ticket["foto"])
+						print("MASUK AFTER DOWNLO")
+						path_foto = os.getcwd()+"\\"+foto_file_name
+
 					element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[1]/div[2]/div/label/input", 30, driver_d)
 					driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[1]/div[2]/div/label/input").send_keys(data_ticket["ticket_ebs"]+"\n")
 
@@ -97,7 +93,7 @@ def run():
 						element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[1]/td[2]", 30, driver_d)
 						sleep(2)
 						try:
-							btn_suspen = driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[3]/div/div/a");
+							btn_suspen = driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[3]/div/div/a")
 							if "Open Suspend" in btn_suspen.text:
 								driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[3]/div/div/a").click()
 								element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[1]/div/div", 30, driver_d)
@@ -105,23 +101,41 @@ def run():
 							pass
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[1]/td[2]/input").send_keys(data_ticket["grounding"])
 
+						#INPUT RMM
+						#CLICK SELECT RMM
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[2]/td[2]/select").click()
+						#CLICK OPTION ACTIVE
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[2]/td[2]/select/option[4]").click()
 
+						#INPUT VOLTAGE
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[3]/td[2]/input").send_keys(data_ticket["voltage"])
 
+						#INPUT UPS
+						#CLICK SELECT UPS
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[4]/td[2]/select").click()
-						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[4]/td[2]/select/option[4]").click()
+						#PILIH STATUS
+						if(data_ticket["ups"] == "Ready"):
+							driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[4]/td[2]/select/option[4]").click()
+						elif(data_ticket["ups"] == "Not Ready"):
+							driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[4]/td[2]/select/option[5]").click()
+						else:
+							driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[4]/td[2]/select/option[3]").click()
 
+						#CLICK AC
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[5]/td[2]/input").send_keys(data_ticket["temp"])
 
+						#CLICK EXHAUST FAN
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[6]/td[2]/select").click()
+						#CLICK SELECT EXHAUST ADA
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[6]/td[2]/select/option[3]").click()
 
+						#SET PLAT ASKIM READY
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[7]/td[2]/input").send_keys("ready")
 
+						#CLICK SELECT CAMERA INTERNAL
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[8]/td[2]/select").click()
-						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[8]/td[2]/select/option[3]").click()
+						#CLICK CAMERA INTERNAL ADA BRFUNGSI
+						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[8]/td[2]/select/option[5]").click()
 
 						# driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[12]/td[2]/input").send_keys(data_ticket["start_wo_date"])
 						# driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[12]/td[2]/input").send_keys(Keys.RIGHT)
@@ -137,16 +151,18 @@ def run():
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[2]/table/tbody/tr[6]/td/input").send_keys(data_ticket["fe_report"])
 						# driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[2]/table/tbody/tr[8]/td/textarea").click()
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[2]/table/tbody/tr[8]/td/textarea").send_keys(data_ticket["note"])
+	  
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[3]/button").click()
 						element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[1]/div/div", 30, driver_d)
 						sleep(2)
 						driver_d.refresh()
 						element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[1]/td[2]", 30, driver_d)
 
-						if data_ticket["status_foto"] == "t":
+						if data_ticket["status_foto"] == 1:
 							driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[3]/div[2]/a[4]").click()
 							sleep(3)
 							driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[6]/div/div/form/div[1]/div/input").send_keys(path_foto)
+	   
 							driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[6]/div/div/form/div[2]/button[2]").click()
 							element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[1]/div/div", 30, driver_d)
 							sleep(2)
@@ -154,11 +170,15 @@ def run():
 							element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[1]/td[2]", 30, driver_d)
 
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[1]/div[2]/table/tbody/tr[4]/td[2]/div/div[1]/select").click()
+	  
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[1]/div[2]/table/tbody/tr[4]/td[2]/div/div[1]/select/option[6]").click()
+	  
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[1]/div[2]/table/tbody/tr[4]/td[2]/div/div[2]/button").click()
 						element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[1]/div/div", 30, driver_d)
 						sleep(2)
-						shot_url("https://boss.citius.co.id/closeEbsTicketAuto/"+str(data_ticket["ticket_id"]))
+						shot_url("https://1gen.citius.co.id/api/shintei/autotools/delete_closed_from_list/"+str(data_ticket["ticket_id"]))
+					else:
+						shot_url("https://1gen.citius.co.id/api/shintei/autotools/delete_closed_from_list/"+str(data_ticket["ticket_id"]))
 				else:
 					open("ticket_error.txt","a").writelines(line)
 			except Exception as e:
@@ -189,15 +209,39 @@ def check_whitelist_sender_email(email):
 			return True
 	return False
 
-def download(url, name):
+def download(url):
 	while True:
 		try:
-			response = requests.get(url, verify=False, timeout=10)
-			print("OKEEEE")
-			open(name, "wb").write(response.content)
-			break
+			resp = requests.get(url, verify=False, timeout=10)
+			# 1. Coba dari header Content-Disposition
+			cd = resp.headers.get('content-disposition')
+			if cd:
+				matches = re.findall(r'filename="?([^"]+)"?', cd)
+				filename = matches[0] if matches else None
+			else:
+				filename = None
+
+			# 2. Jika masih None, ambil dari URL path
+			if not filename:
+				path = urlparse(url).path
+				filename = os.path.basename(path)
+
+			# 3. Jika masih kosong (URL tanpa nama), buat default berdasarkan waktu + ekstensi
+			if not filename:
+				# ambil ekstensi dari Content-Type misal 'image/jpeg'
+				ct = resp.headers.get('content-type', '')
+				ext = ct.split('/')[-1] if '/' in ct else 'jpg'
+				filename = f"image_{int(time())}.{ext}"
+
+			# simpan file
+			with open(filename, "wb") as f:
+				f.write(resp.content)
+
+			print(f"✅ Tersimpan sebagai: {filename}")
+			return filename
+
 		except Exception as e:
-			print("ULANGGGG")
+			print("🔄 Ulang…", e)
 			sleep(5)
 
 def shot_url(url):

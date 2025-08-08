@@ -65,16 +65,20 @@ def run():
 	driver_d = Chrome(options=chrome_options)
 	
 	
-	driver_d.get("https://app.slmugmandiri.co.id/sistrack_new/")
+	driver_d.get("https://sistrack.ugarta.co.id/sistrack_new/")
 	login(driver_d)
 	show_notif_captcha()
 	while True:
 		sleep(10)
 		print("START JOB")
-		get_tiket = get_data_api('https://boss.citius.co.id/public/api/get_open_ticket')
+		get_tiket = get_data_api('https://1gen.citius.co.id/api/shintei/autotools/get_appointment_ticket_list')
 		for tiket in get_tiket:
 			try:
-				driver_d.get("https://app.slmugmandiri.co.id/sistrack_new/Home")
+				cek_accept = crosscheck_ticket(tiket)
+				if(cek_accept["status"] == 0):
+					shot_url("https://1gen.citius.co.id/api/shintei/autotools/delete_appointment_from_list/"+str(tiket))
+					continue
+				driver_d.get("https://sistrack.ugarta.co.id/sistrack_new/")
 		
 				element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[1]/div[2]/div/label/input", 30, driver_d)
 				driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[1]/div[2]/div/label/input").send_keys(tiket+"\n")
@@ -98,7 +102,7 @@ def run():
 					driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[1]/div[2]/table/tbody/tr[4]/td[2]/div/div[2]/button").click()
 					element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[1]/div/div", 30, driver_d)
 					sleep(2)
-				shot_url("https://boss.citius.co.id/public/api/delete_proccessed_appointment/"+str(tiket))
+				shot_url("https://1gen.citius.co.id/api/shintei/autotools/delete_appointment_from_list/"+str(tiket))
 			except Exception as e:
 				print(e)
 			
@@ -144,6 +148,17 @@ def get_data_api(url):
 			print("ULANGGGG")
 			sleep(5)
 
+def crosscheck_ticket(ticket_ebs):
+	while True:
+		try:
+			x = requests.get("https://1gen.citius.co.id/api/shintei/autotools/crosscheck_accept_ticket/"+ticket_ebs, verify=False, timeout=10)
+			x.close()
+			return json.loads(x.text)
+			break
+		except Exception as e:
+			print("ULANGGGG")
+			sleep(5)
+
 def post_data_api(url):
 	while True:
 		try:
@@ -158,10 +173,10 @@ def post_data_api(url):
 def login(driver_d):
 	element_presence(By.XPATH, "/html/body/div[2]/form/div[1]/input", 30, driver_d)
 	try:
-		driver_d.find_element(By.XPATH, "/html/body/div[2]/form/div[1]/input").send_keys("CC CTS 3")
+		driver_d.find_element(By.XPATH, "/html/body/div[2]/form/div[1]/input").send_keys("CC-CTS")
 		element_presence(By.XPATH, "/html/body/div[2]/form/div[2]/input", 30, driver_d)
 		sleep(2)
-		driver_d.find_element(By.XPATH, "/html/body/div[2]/form/div[2]/input").send_keys("123456")
+		driver_d.find_element(By.XPATH, "/html/body/div[2]/form/div[2]/input").send_keys("citius123")
 	except Exception as e:
 		print(e)
 

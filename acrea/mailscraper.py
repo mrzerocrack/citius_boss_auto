@@ -40,22 +40,22 @@ with open("bot_status.txt", "w") as f:
 def set_manifest_json(PROXY_HOST, PROXY_PORT, PROXY_PASS, PROXY_USER) :
 	manifest_json = """
 	{
-	    "version": "1.0.0",
-	    "manifest_version": 2,
-	    "name": "Chrome Proxy",
-	    "permissions": [
-	        "proxy",
-	        "tabs",
-	        "unlimitedStorage",
-	        "storage",
-	        "<all_urls>",
-	        "webRequest",
-	        "webRequestBlocking"
-	    ],
-	    "background": {
-	        "scripts": ["background.js"]
-	    },
-	    "minimum_chrome_version":"22.0.0"
+		"version": "1.0.0",
+		"manifest_version": 2,
+		"name": "Chrome Proxy",
+		"permissions": [
+			"proxy",
+			"tabs",
+			"unlimitedStorage",
+			"storage",
+			"<all_urls>",
+			"webRequest",
+			"webRequestBlocking"
+		],
+		"background": {
+			"scripts": ["background.js"]
+		},
+		"minimum_chrome_version":"22.0.0"
 	}
 	"""
 	return manifest_json
@@ -63,51 +63,64 @@ def set_manifest_json(PROXY_HOST, PROXY_PORT, PROXY_PASS, PROXY_USER) :
 def set_background_js(PROXY_HOST, PROXY_PORT, PROXY_PASS, PROXY_USER):
 	background_js = """
 	var config = {
-	        mode: "fixed_servers",
-	        rules: {
-	        singleProxy: {
-	            scheme: "http",
-	            host: "%s",
-	            port: parseInt(%s)
-	        },
-	        bypassList: ["localhost"]
-	        }
-	    };
+			mode: "fixed_servers",
+			rules: {
+			singleProxy: {
+				scheme: "http",
+				host: "%s",
+				port: parseInt(%s)
+			},
+			bypassList: ["localhost"]
+			}
+		};
 
 	chrome.proxy.settings.set({value: config, scope: "regular"}, function() {});
 
 	function callbackFn(details) {
-	    return {
-	        authCredentials: {
-	            username: "%s",
-	            password: "%s"
-	        }
-	    };
+		return {
+			authCredentials: {
+				username: "%s",
+				password: "%s"
+			}
+		};
 	}
 
 	chrome.webRequest.onAuthRequired.addListener(
-	            callbackFn,
-	            {urls: ["<all_urls>"]},
-	            ['blocking']
+				callbackFn,
+				{urls: ["<all_urls>"]},
+				['blocking']
 	);
 	""" % (PROXY_HOST, PROXY_PORT, PROXY_USER, PROXY_PASS)
 	return background_js
 
-def shot_api(incident_id, atm_id, problem):
-	print('shot_api ',incident_id,atm_id,problem)
-	url = 'http://boss.citius.co.id/api/create-ticket'
-	myobj = {'incident_id':incident_id, 'atm_id':atm_id, 'problem':problem}
+def shot_api(incident_id, atm_id, problem, token):
+	print('shot_api ', incident_id, atm_id, problem)
+	url = 'https://1gen.citius.co.id/api/shintei/ticket/create/auto'
+	myobj = {'incident_id': incident_id, 'atm_id': atm_id, 'problem': problem}
+	headers = {
+		'Authorization': f'Bearer {token}'
+	}
+
 	while True:
 		try:
-			x = requests.post(url, data = myobj, timeout=10)
+			x = requests.post(url, data=myobj, headers=headers, timeout=10)
 			print("OKEEEE")
 			break
 		except Exception as e:
-			print("ULANGGGG")
+			print("ULANGGGG", e)
 			sleep(5)
-			x = requests.post(url, data = myobj, timeout=10)
+
+	try:
+		res_json = x.json()  # convert response to dict
+		status = res_json.get("status")
+		message = res_json.get("message")
+	except Exception as e:
+		print("Gagal parsing JSON response:", e)
+		status = None
+		message = None
+
 	x.close()
-	return x.text
+	return status, message
 
 def element_presence(by,by_val,time, driver):
 	element_present = EC.presence_of_element_located((by, by_val))
@@ -119,24 +132,24 @@ def element_presence(by,by_val,time, driver):
 		pass
 
 def get_chromedriver(use_proxy=False,host="0",port=0,pwd="a",usr="a"):
-    path = os.path.dirname(os.path.abspath(__file__))
-    chrome_options = webdriver.ChromeOptions()
+	path = os.path.dirname(os.path.abspath(__file__))
+	chrome_options = webdriver.ChromeOptions()
 
-    manifest_json = set_manifest_json(host,port,pwd,usr)
-    background_js = set_background_js(host,port,pwd,usr)
-    if use_proxy:
-        pluginfile = 'proxy_auth_plugin.zip'
+	manifest_json = set_manifest_json(host,port,pwd,usr)
+	background_js = set_background_js(host,port,pwd,usr)
+	if use_proxy:
+		pluginfile = 'proxy_auth_plugin.zip'
 
-        with zipfile.ZipFile(pluginfile, 'w') as zp:
-            zp.writestr("manifest.json", manifest_json)
-            zp.writestr("background.js", background_js)
-        chrome_options.add_extension(pluginfile)
-        print("PLUG IN ADED")
+		with zipfile.ZipFile(pluginfile, 'w') as zp:
+			zp.writestr("manifest.json", manifest_json)
+			zp.writestr("background.js", background_js)
+		chrome_options.add_extension(pluginfile)
+		print("PLUG IN ADED")
 
-    driver = webdriver.Chrome(
-        os.path.join(path, 'chromedriver'),
-        chrome_options=chrome_options)
-    return driver
+	driver = webdriver.Chrome(
+		os.path.join(path, 'chromedriver'),
+		chrome_options=chrome_options)
+	return driver
 
 def run():
 	# tab = sys.argv[1]
@@ -203,13 +216,15 @@ def run():
 										atm_id = str(body_email.text.split('ATM ID : ')[1].strip().split('\n')[0])
 										problem = str(body_email.text.split('PROBLEM : ')[1].strip().split('\n')[0])
 										while True:
-											res_shot_api = shot_api(incident_id, atm_id, problem)
-											if 'ok' in res_shot_api:
+											status, message = shot_api(incident_id, atm_id, problem, data_xpath['token'])
+											if status == 1:
 												break
-											elif 'fail' in res_shot_api:
+											elif status == 0:
+												print("Message:", message)
 												break
 											else:
-												print('gagal')
+												print('ERRORRRRRRRRRRRRRRRRRRR')
+												sleep(10)
 								driver_d.find_element(By.XPATH, data_xpath['inbox_button']).click()
 								sleep(2)
 								print('OK')
@@ -246,29 +261,22 @@ def check_whitelist_sender_email(email):
 			return True
 	return False
 
-def get_login_email():
-	url = 'http://boss.citius.co.id/api/get-login-email'
-	myobj = {}
-	x = requests.post(url, data = myobj)
-	x.close()
-	return json.loads(x.text)
-
 def get_data_xpath():
-	url = 'http://iot.citius.co.id/api/mailscrapper_get_xpath'
+	url = 'https://1gen.citius.co.id/api/shintei/ticket/mailscrapper_get_xpath'
 	myobj = {}
 	x = requests.post(url, data = myobj)
 	x.close()
 	return json.loads(x.text)
 
 def login(driver_d, data_xpath):
-	login_data = get_login_email()
+	print(data_xpath['login_username_form'])
 	element_presence(By.XPATH, data_xpath['login_username_form'], 30, driver_d)
 	try:
 		element_presence(By.XPATH, data_xpath['login_username_form'], 30, driver_d)
-		driver_d.find_element(By.XPATH, data_xpath['login_username_form']).send_keys(login_data['email']+"\n")
+		driver_d.find_element(By.XPATH, data_xpath['login_username_form']).send_keys(data_xpath['credential_user']+"\n")
 		element_presence(By.XPATH, data_xpath['login_password_form'], 30, driver_d)
 		sleep(2)
-		driver_d.find_element(By.XPATH, data_xpath['login_password_form']).send_keys(login_data['password']+"\n")
+		driver_d.find_element(By.XPATH, data_xpath['login_password_form']).send_keys(data_xpath['credential_password']+"\n")
 	except Exception as e:
 		print(e)
 
