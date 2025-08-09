@@ -248,6 +248,7 @@ def shot_url(url):
 	while True:
 		try:
 			myobj = {}
+			print(url)
 			x = requests.get(url, verify=False, timeout=10)
 			x.close()
 			break

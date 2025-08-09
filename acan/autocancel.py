@@ -57,19 +57,18 @@ def run():
 	has_cookie = 0
 	global driver_d
 	driver_d = Chrome(options=chrome_options)
-	driver_d.get("https://app.slmugmandiri.co.id/sistrack_new/")
+	driver_d.get("https://sistrack.ugarta.co.id/sistrack_new/")
 	login(driver_d)
 	show_notif_captcha()
 	with open('list_tiket.txt', 'r') as f:
 		for line in f:
-			data_ticket = get_data_api('http://boss.citius.co.id/public/api/get_cancel_ticket_api/'+line.strip())
-
+			data_ticket = get_data_api('https://1gen.citius.co.id/api/shintei/autotools/get_report_item_value_cancel_ticket/'+line.strip())
 			try:
-				if data_ticket["status"] == "t":
-					driver_d.get("https://app.slmugmandiri.co.id/sistrack_new/Home")
-					name_foto = data_ticket["ticket_ebs"] + data_ticket["foto"].replace("/","-")
-					if data_ticket["status_foto"] == "t":
-						download("http://boss.citius.co.id/"+data_ticket["foto"], name_foto)
+				if data_ticket["status"] == 1:
+					driver_d.get("https://sistrack.ugarta.co.id/sistrack_new/Home")
+					name_foto = None
+					if data_ticket["status_foto"] == 1:
+						name_foto = download(data_ticket["foto"])
 						path_foto = os.getcwd()+"\\"+name_foto
 			
 					element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[1]/div[2]/div/label/input", 30, driver_d)
@@ -117,7 +116,7 @@ def run():
 						# driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[13]/td[2]/input").send_keys(data_ticket["date"])
 						# driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[13]/td[2]/input").send_keys(Keys.RIGHT)
 						# driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[13]/td[2]/input").send_keys(data_ticket["date"])
-						driver_d.execute_script("arguments[0].value='"+data_ticket["dt"]+"';", driver_d.find_element(By.XPATH, '/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[13]/td[2]/input'))
+						# driver_d.execute_script("arguments[0].value='"+data_ticket["dt"]+"';", driver_d.find_element(By.XPATH, '/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[13]/td[2]/input'))
 
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[2]/table/tbody/tr[6]/td/input").send_keys("NON JC REPORT")
 						# driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[2]/table/tbody/tr[8]/td/textarea").click()
@@ -128,7 +127,7 @@ def run():
 						driver_d.refresh()
 						element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[1]/td[2]", 30, driver_d)
 
-						if data_ticket["status_foto"] == "t":
+						if data_ticket["status_foto"] == 1:
 							driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[3]/div[2]/a[4]").click()
 							sleep(3)
 							driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[6]/div/div/form/div[1]/div/input").send_keys(path_foto)
@@ -143,7 +142,9 @@ def run():
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[1]/div[2]/table/tbody/tr[4]/td[2]/div/div[2]/button").click()
 						element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[1]/div/div", 30, driver_d)
 						sleep(2)
-						shot_url("http://boss.citius.co.id/closeEbsTicketAuto/"+str(data_ticket["ticket_id"]))
+						shot_url("https://1gen.citius.co.id/api/shintei/autotools/delete_cancel_from_list/"+str(data_ticket["ticket_id"]))
+					else:
+						shot_url("https://1gen.citius.co.id/api/shintei/autotools/delete_cancel_from_list/"+str(data_ticket["ticket_id"]))
 				else:
 					open("ticket_error.txt","a").writelines(line)
 			except Exception as e:
@@ -175,16 +176,39 @@ def check_whitelist_sender_email(email):
 			return True
 	return False
 
-def download(url, name):
+def download(url):
 	while True:
 		try:
-			response = requests.get(url, verify=False, timeout=10)
-			print(url)
-			open(name, "wb").write(response.content)
-			break
+			resp = requests.get(url, verify=False, timeout=10)
+			# 1. Coba dari header Content-Disposition
+			cd = resp.headers.get('content-disposition')
+			if cd:
+				matches = re.findall(r'filename="?([^"]+)"?', cd)
+				filename = matches[0] if matches else None
+			else:
+				filename = None
+
+			# 2. Jika masih None, ambil dari URL path
+			if not filename:
+				path = urlparse(url).path
+				filename = os.path.basename(path)
+
+			# 3. Jika masih kosong (URL tanpa nama), buat default berdasarkan waktu + ekstensi
+			if not filename:
+				# ambil ekstensi dari Content-Type misal 'image/jpeg'
+				ct = resp.headers.get('content-type', '')
+				ext = ct.split('/')[-1] if '/' in ct else 'jpg'
+				filename = f"image_{int(time())}.{ext}"
+
+			# simpan file
+			with open(filename, "wb") as f:
+				f.write(resp.content)
+
+			print(f"✅ Tersimpan sebagai: {filename}")
+			return filename
+
 		except Exception as e:
-			print(e)
-			print("ULANGGGG")
+			print("🔄 Ulang…", e)
 			sleep(5)
 
 def shot_url(url):
@@ -201,12 +225,14 @@ def shot_url(url):
 def get_data_api(url):
 	while True:
 		try:
+			print(url)
 			x = requests.get(url, verify=False, timeout=10)
 			x.close()
 			return json.loads(x.text)
 			break
 		except Exception as e:
 			print("ULANGGGG")
+			print(e)
 			sleep(5)
 
 def post_data_api(url):

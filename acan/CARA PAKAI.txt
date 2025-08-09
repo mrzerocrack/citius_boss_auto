@@ -1,8 +1,8 @@
 1.Pastikan file list_tiket.txt ada, jika tidak ada dibuat dulu filenya
 
 2.BUKA INI 
-https://boss.citius.co.id/public/api/get_cancel_ticket
+https://1gen.citius.co.id/api/shintei/autotools/get_list_cancel_ticket
 
-3.SALIN ISI NYA KE list_ticket.txt LALU SAVE 
+3.SALIN ISI NYA KE list_tiket.txt LALU SAVE 
 
 4. jalankan start.bat
