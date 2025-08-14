@@ -31,6 +31,7 @@ import threading
 import win32api
 import win32gui
 import subprocess
+from urllib.parse import urlparse
 
 
 #DATE TIME GMT DAN LOCAL
