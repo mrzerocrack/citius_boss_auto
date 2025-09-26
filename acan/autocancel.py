@@ -118,6 +118,8 @@ def run():
 						# driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[13]/td[2]/input").send_keys(data_ticket["date"])
 						# driver_d.execute_script("arguments[0].value='"+data_ticket["dt"]+"';", driver_d.find_element(By.XPATH, '/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[13]/td[2]/input'))
 
+						driver_d.execute_script("arguments[0].value='"+data_ticket["dt_closed"]+"';", driver_d.find_element(By.XPATH, '/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[1]/table/tbody/tr[13]/td[2]/input'))
+
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[2]/table/tbody/tr[6]/td/input").send_keys("NON JC REPORT")
 						# driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[2]/table/tbody/tr[8]/td/textarea").click()
 						driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div[4]/div[2]/form/div/div[2]/table/tbody/tr[8]/td/textarea").send_keys(data_ticket["note"])
