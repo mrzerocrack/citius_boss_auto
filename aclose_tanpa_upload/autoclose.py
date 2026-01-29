@@ -1,12 +1,10 @@
 import zipfile
 from selenium import webdriver
-from undetected_chromedriver import Chrome
-from selenium.webdriver.chrome.options import Options
+import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.common.alert import Alert
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support import expected_conditions as EC
 import sys
 import datetime
@@ -32,6 +30,7 @@ from PIL import Image
 #DATE TIME GMT DAN LOCAL
 # print("\nGMT: "+time.strftime("%a, %d %b %Y %I:%M:%S %p %Z", time.gmtime()))
 # print("Local: "+strftime("%a, %d %b %Y %I:%M:%S %p %Z\n"))
+CHROME_MAJOR_VERSION = 144
 stop = False
 def shot_api(incident_id, atm_id, problem):
 	print('shot_api ',incident_id,atm_id,problem)
@@ -68,12 +67,12 @@ def run():
 	# 		print(col[row].value)
 	# 	input("enter")
 	# tab = sys.argv[1]
-	chrome_options = Options()
+	chrome_options = uc.ChromeOptions()
 	chrome_options.add_argument("--incognito")
 	chrome_options.add_argument('--headless')
 	#chrome_options.add_argument('--no-sandbox')
 	#chrome_options.add_argument('--proxy-server='+input_proxy.split("-")[0])
-	driver_d = Chrome(options=chrome_options)
+	driver_d = uc.Chrome(options=chrome_options, version_main=CHROME_MAJOR_VERSION)
 	driver_d.maximize_window()
 	has_cookie = 0
 	driver_d.get("https://app.slmugmandiri.co.id/sistrack_new/")

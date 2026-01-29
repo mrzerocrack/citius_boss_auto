@@ -1,12 +1,10 @@
 import zipfile
 from selenium import webdriver
-from undetected_chromedriver import Chrome
-from selenium.webdriver.chrome.options import Options
+import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.common.alert import Alert
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support import expected_conditions as EC
 import sys
 import datetime
@@ -31,6 +29,8 @@ from PIL import Image
 # print("\nGMT: "+time.strftime("%a, %d %b %Y %I:%M:%S %p %Z", time.gmtime()))
 # print("Local: "+strftime("%a, %d %b %Y %I:%M:%S %p %Z\n"))
 
+CHROME_MAJOR_VERSION = 144
+
 def shot_api(ticket_ebs, note):
 	print('shot_api ')
 	print('shot_api ',ticket_ebs,note)
@@ -51,12 +51,12 @@ def element_presence(by,by_val,time, driver):
 
 def run():
 	# tab = sys.argv[1]
-	chrome_options = Options()
+	chrome_options = uc.ChromeOptions()
 	chrome_options.add_argument("--incognito")
 	#chrome_options.add_argument('--no-sandbox')
 	#chrome_options.add_argument('--headless')
 	#chrome_options.add_argument('--proxy-server='+input_proxy.split("-")[0])
-	driver_d = Chrome(options=chrome_options)
+	driver_d = uc.Chrome(options=chrome_options, version_main=CHROME_MAJOR_VERSION)
 	has_cookie = 0
 	driver_d.get("https://app.slmugmandiri.co.id/sistrack_new/")
 	login(driver_d)
