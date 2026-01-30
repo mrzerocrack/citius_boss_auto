@@ -97,6 +97,9 @@ def shot_api(incident_id, atm_id, problem, token):
     url = "https://1gen.citius.co.id/api/shintei/ticket/create/auto"
     myobj = {"incident_id": incident_id, "atm_id": atm_id, "problem": problem}
     headers = {"Authorization": f"Bearer {token}"}
+    http_status = None
+    response_text = None
+    error_detail = None
 
     while True:
         try:
@@ -104,10 +107,13 @@ def shot_api(incident_id, atm_id, problem, token):
             print("OKEEEE")
             break
         except Exception as e:
+            error_detail = str(e)
             print("ULANGGGG", e)
             sleep(5)
 
     try:
+        http_status = x.status_code
+        response_text = x.text
         res_json = x.json()
         status = res_json.get("status")
         message = res_json.get("message")
@@ -117,7 +123,7 @@ def shot_api(incident_id, atm_id, problem, token):
         message = None
 
     x.close()
-    return status, message
+    return status, message, http_status, response_text, error_detail
 
 
 def element_presence(by, by_val, timeout, driver):
@@ -250,11 +256,20 @@ def run():
                                     problem = body_email_text.split("PROBLEM : ")[1].strip().split("\n")[0]
 
                                     while True:
-                                        status, message = shot_api(incident_id, atm_id, problem, data_xpath["token"])
+                                        status, message, http_status, response_text, error_detail = shot_api(
+                                            incident_id, atm_id, problem, data_xpath["token"]
+                                        )
                                         if status in (0, 1):
                                             print("API:", status, message)
                                             break
-                                        print("API error, retry...")
+                                        print(
+                                            "API error, retry...",
+                                            "status=", status,
+                                            "message=", message,
+                                            "http_status=", http_status,
+                                            "response_text=", response_text,
+                                            "error_detail=", error_detail,
+                                        )
                                         sleep(10)
 
                             driver_d.find_element(By.XPATH, data_xpath["inbox_button"]).click()
