@@ -4,6 +4,7 @@ import sys
 import datetime
 import re
 import time
+import socket
 from time import sleep, strftime
 import random
 import secrets
@@ -19,6 +20,7 @@ from PIL import Image
 
 import undetected_chromedriver as uc  # ✅ pakai ini, bukan "from undetected_chromedriver import Chrome"
 
+from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -147,6 +149,61 @@ def detect_chrome_major(chrome_bin):
         except Exception:
             pass
     return 0
+
+
+def find_free_port():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return int(port)
+
+
+def wait_devtools_ready(port, timeout=25):
+    deadline = time.time() + timeout
+    url = f"http://127.0.0.1:{port}/json/version"
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=1) as resp:
+                data = resp.read().decode("utf-8", errors="replace")
+                if "webSocketDebuggerUrl" in data:
+                    return True
+        except Exception:
+            pass
+        sleep(0.5)
+    return False
+
+
+def make_driver_windows_attach(chrome_bin):
+    if not chrome_bin:
+        raise RuntimeError("Chrome binary tidak ditemukan untuk mode attach Windows.")
+
+    debug_port = 0
+    try:
+        debug_port = int(os.environ.get("CHROME_DEBUG_PORT", "0"))
+    except Exception:
+        debug_port = 0
+    if debug_port <= 0:
+        debug_port = find_free_port()
+
+    launch_cmd = [
+        chrome_bin,
+        f"--remote-debugging-port={debug_port}",
+        "--remote-allow-origins=*",
+        "--no-first-run",
+        "--no-default-browser-check",
+    ]
+    subprocess.Popen(launch_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    if not wait_devtools_ready(debug_port, timeout=25):
+        raise RuntimeError(f"DevTools port {debug_port} tidak siap.")
+
+    options = webdriver.ChromeOptions()
+    options.binary_location = chrome_bin
+    options.add_experimental_option("debuggerAddress", f"127.0.0.1:{debug_port}")
+    driver = webdriver.Chrome(options=options)
+    print("[INFO] Windows attach mode aktif, debugger port:", debug_port)
+    return driver
 
 manifest_json = ""
 background_js = ""
@@ -289,17 +346,28 @@ def make_driver():
     chrome_options.add_argument("--no-default-browser-check")
     chrome_options.add_argument("--disable-popup-blocking")
 
-    driver_kwargs = {"options": chrome_options, "use_subprocess": False}
     chrome_bin = resolve_chrome_binary()
-    if chrome_bin:
-        chrome_options.binary_location = chrome_bin
-        driver_kwargs["browser_executable_path"] = chrome_bin
     chrome_major = detect_chrome_major(chrome_bin)
     if chrome_major > 0:
-        driver_kwargs["version_main"] = chrome_major
         print("AUTO-DETECT CHROME MAJOR:", chrome_major, "binary:", chrome_bin)
     else:
         print("AUTO-DETECT CHROME MAJOR gagal; binary:", chrome_bin or "(tidak ditemukan)")
+
+    # Mode Windows: attach ke instance Chrome yang sama agar tidak double-spawn.
+    use_attach_mode = os.name == "nt" and os.environ.get("DISABLE_WINDOWS_ATTACH_MODE", "").strip().lower() not in {
+        "1",
+        "true",
+        "yes",
+    }
+    if use_attach_mode:
+        return make_driver_windows_attach(chrome_bin)
+
+    driver_kwargs = {"options": chrome_options, "use_subprocess": False}
+    if chrome_bin:
+        chrome_options.binary_location = chrome_bin
+        driver_kwargs["browser_executable_path"] = chrome_bin
+    if chrome_major > 0:
+        driver_kwargs["version_main"] = chrome_major
 
     try:
         return uc.Chrome(**driver_kwargs)
