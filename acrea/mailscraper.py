@@ -26,11 +26,40 @@ from selenium.webdriver.support import expected_conditions as EC
 # =========================
 # CONFIG
 # =========================
+def _windows_registry_chrome_paths():
+    if os.name != "nt":
+        return []
+    try:
+        import winreg  # type: ignore
+    except Exception:
+        return []
+
+    candidates = []
+    keys = [
+        (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe"),
+        (winreg.HKEY_LOCAL_MACHINE, r"Software\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe"),
+        (winreg.HKEY_LOCAL_MACHINE, r"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe"),
+    ]
+    for hive, subkey in keys:
+        try:
+            with winreg.OpenKey(hive, subkey) as handle:
+                value, _ = winreg.QueryValueEx(handle, "")
+                if value:
+                    candidates.append(value)
+        except Exception:
+            continue
+    return candidates
+
+
 def resolve_chrome_binary():
     candidates = []
+    override = os.environ.get("CHROME_BINARY") or os.environ.get("BROWSER_EXECUTABLE_PATH")
+    if override:
+        candidates.append(override.strip())
     if os.name == "nt":
         local_app_data = os.environ.get("LOCALAPPDATA", "")
         program_files = os.environ.get("PROGRAMFILES", r"C:\Program Files")
+        program_w6432 = os.environ.get("ProgramW6432", r"C:\Program Files")
         program_files_x86 = os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
         candidates.extend(
             [
@@ -40,9 +69,22 @@ def resolve_chrome_binary():
                 if local_app_data
                 else "",
                 os.path.join(program_files, "Google", "Chrome", "Application", "chrome.exe"),
+                os.path.join(program_w6432, "Google", "Chrome", "Application", "chrome.exe"),
                 os.path.join(program_files_x86, "Google", "Chrome", "Application", "chrome.exe"),
             ]
         )
+        candidates.extend(_windows_registry_chrome_paths())
+        try:
+            proc = subprocess.run(["where", "chrome"], capture_output=True, text=True, check=False, timeout=5)
+            candidates.extend([line.strip() for line in proc.stdout.splitlines() if line.strip()])
+        except Exception:
+            pass
+        try:
+            finder = getattr(uc, "find_chrome_executable", None)
+            if callable(finder):
+                candidates.append(finder())
+        except Exception:
+            pass
     else:
         candidates.extend(
             [
@@ -66,21 +108,44 @@ def resolve_chrome_binary():
     return ""
 
 
-def detect_chrome_major(chrome_bin):
-    if not chrome_bin:
-        return 0
-    try:
-        proc = subprocess.run([chrome_bin, "--version"], capture_output=True, text=True, check=False)
-    except Exception:
-        return 0
-    raw = f"{proc.stdout}\n{proc.stderr}"
-    m = re.search(r"(\d+)\.\d+\.\d+\.\d+", raw)
+def _extract_chrome_major(raw):
+    m = re.search(r"(\d+)\.\d+\.\d+\.\d+", raw or "")
     if not m:
         return 0
     try:
         return int(m.group(1))
     except Exception:
         return 0
+
+
+def detect_chrome_major(chrome_bin):
+    if not chrome_bin:
+        return 0
+    try:
+        proc = subprocess.run([chrome_bin, "--version"], capture_output=True, text=True, check=False, timeout=8)
+        major = _extract_chrome_major(f"{proc.stdout}\n{proc.stderr}")
+        if major > 0:
+            return major
+    except Exception:
+        pass
+
+    if os.name == "nt":
+        escaped = chrome_bin.replace("'", "''")
+        ps = f"(Get-Item -LiteralPath '{escaped}').VersionInfo.ProductVersion"
+        try:
+            proc = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", ps],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=8,
+            )
+            major = _extract_chrome_major(f"{proc.stdout}\n{proc.stderr}")
+            if major > 0:
+                return major
+        except Exception:
+            pass
+    return 0
 
 manifest_json = ""
 background_js = ""
@@ -233,7 +298,7 @@ def make_driver():
         driver_kwargs["version_main"] = chrome_major
         print("AUTO-DETECT CHROME MAJOR:", chrome_major, "binary:", chrome_bin)
     else:
-        print("AUTO-DETECT CHROME MAJOR gagal, lanjut default UC")
+        print("AUTO-DETECT CHROME MAJOR gagal; binary:", chrome_bin or "(tidak ditemukan)")
 
     try:
         return uc.Chrome(**driver_kwargs)
