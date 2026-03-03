@@ -3,6 +3,7 @@ import os
 import sys
 import datetime
 import re
+import time
 from time import sleep, strftime
 import random
 import secrets
@@ -322,9 +323,75 @@ def make_driver():
         raise
 
 
+def wait_for_windows_profile_selection(driver_d):
+    if os.name != "nt":
+        return
+    if os.environ.get("DISABLE_PROFILE_PICKER_WAIT", "").strip().lower() in {"1", "true", "yes"}:
+        return
+
+    timeout = 180
+    try:
+        timeout = int(os.environ.get("PROFILE_PICKER_TIMEOUT", "180"))
+    except Exception:
+        timeout = 180
+    if timeout <= 0:
+        return
+
+    try:
+        driver_d.get("chrome://profile-picker/")
+    except Exception as exc:
+        print("[INFO] gagal buka profile picker:", exc)
+        return
+
+    print(f"[INFO] Pilih profil Chrome dulu (timeout {timeout} detik)...")
+    deadline = time.time() + timeout
+    selected_handle = None
+
+    while time.time() < deadline:
+        try:
+            handles = list(driver_d.window_handles)
+        except Exception:
+            break
+
+        for handle in handles:
+            try:
+                driver_d.switch_to.window(handle)
+                current_url = (driver_d.current_url or "").lower()
+            except Exception:
+                continue
+            if not current_url.startswith("chrome://profile-picker"):
+                selected_handle = handle
+                break
+
+        if selected_handle:
+            break
+        sleep(1)
+
+    if not selected_handle:
+        print("[WARN] Timeout pilih profil, lanjut otomatis.")
+        return
+
+    try:
+        handles = list(driver_d.window_handles)
+        for handle in handles:
+            if handle == selected_handle:
+                continue
+            try:
+                driver_d.switch_to.window(handle)
+                driver_d.close()
+            except Exception:
+                pass
+        driver_d.switch_to.window(selected_handle)
+    except Exception:
+        pass
+
+    print("[INFO] Profil dipilih, lanjut proses.")
+
+
 def run():
     # proxy kamu gak dipakai, jadi diabaikan
     driver_d = make_driver()
+    wait_for_windows_profile_selection(driver_d)
 
     driver_d.get("https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Fmail.google.com%2Fmail%2F&dsh=S-1238628894%3A1769658398148796&ifkv=AXbMIuCW7KLzC_Q8mlpZpr6v_D4HrrIY3tiSN98tJOblxewSwhjwofLkDRONKYNNaEXG-imVAlkN&rip=1&sacu=1&service=mail&flowName=GlifWebSignIn&flowEntry=ServiceLogin")
 
