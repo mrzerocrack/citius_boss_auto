@@ -4,7 +4,6 @@ import sys
 import datetime
 import re
 import time
-import socket
 from time import sleep, strftime
 import random
 import secrets
@@ -18,7 +17,10 @@ import subprocess
 import shutil
 from PIL import Image
 
-import undetected_chromedriver as uc  # ✅ pakai ini, bukan "from undetected_chromedriver import Chrome"
+try:
+    import undetected_chromedriver as uc  # optional, dipakai hanya untuk helper path jika tersedia
+except Exception:
+    uc = None
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -84,7 +86,7 @@ def resolve_chrome_binary():
             pass
         try:
             finder = getattr(uc, "find_chrome_executable", None)
-            if callable(finder):
+            if uc is not None and callable(finder):
                 candidates.append(finder())
         except Exception:
             pass
@@ -150,60 +152,6 @@ def detect_chrome_major(chrome_bin):
             pass
     return 0
 
-
-def find_free_port():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
-    sock.close()
-    return int(port)
-
-
-def wait_devtools_ready(port, timeout=25):
-    deadline = time.time() + timeout
-    url = f"http://127.0.0.1:{port}/json/version"
-    while time.time() < deadline:
-        try:
-            with urllib.request.urlopen(url, timeout=1) as resp:
-                data = resp.read().decode("utf-8", errors="replace")
-                if "webSocketDebuggerUrl" in data:
-                    return True
-        except Exception:
-            pass
-        sleep(0.5)
-    return False
-
-
-def make_driver_windows_attach(chrome_bin):
-    if not chrome_bin:
-        raise RuntimeError("Chrome binary tidak ditemukan untuk mode attach Windows.")
-
-    debug_port = 0
-    try:
-        debug_port = int(os.environ.get("CHROME_DEBUG_PORT", "0"))
-    except Exception:
-        debug_port = 0
-    if debug_port <= 0:
-        debug_port = find_free_port()
-
-    launch_cmd = [
-        chrome_bin,
-        f"--remote-debugging-port={debug_port}",
-        "--remote-allow-origins=*",
-        "--no-first-run",
-        "--no-default-browser-check",
-    ]
-    subprocess.Popen(launch_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-    if not wait_devtools_ready(debug_port, timeout=25):
-        raise RuntimeError(f"DevTools port {debug_port} tidak siap.")
-
-    options = webdriver.ChromeOptions()
-    options.binary_location = chrome_bin
-    options.add_experimental_option("debuggerAddress", f"127.0.0.1:{debug_port}")
-    driver = webdriver.Chrome(options=options)
-    print("[INFO] Windows attach mode aktif, debugger port:", debug_port)
-    return driver
 
 manifest_json = ""
 background_js = ""
@@ -339,9 +287,7 @@ def login(driver_d, data_xpath):
 
 
 def make_driver():
-    # ✅ jangan pakai selenium Options(), pakai uc.ChromeOptions()
-    chrome_options = uc.ChromeOptions()
-    # chrome_options.add_argument("--incognito")  # optional
+    chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--no-first-run")
     chrome_options.add_argument("--no-default-browser-check")
     chrome_options.add_argument("--disable-popup-blocking")
@@ -353,42 +299,31 @@ def make_driver():
     else:
         print("AUTO-DETECT CHROME MAJOR gagal; binary:", chrome_bin or "(tidak ditemukan)")
 
-    # Mode Windows: attach ke instance Chrome yang sama agar tidak double-spawn.
-    use_attach_mode = os.name == "nt" and os.environ.get("DISABLE_WINDOWS_ATTACH_MODE", "").strip().lower() not in {
-        "1",
-        "true",
-        "yes",
-    }
-    if use_attach_mode:
-        return make_driver_windows_attach(chrome_bin)
-
-    driver_kwargs = {"options": chrome_options, "use_subprocess": False}
     if chrome_bin:
         chrome_options.binary_location = chrome_bin
-        driver_kwargs["browser_executable_path"] = chrome_bin
-    if chrome_major > 0:
-        driver_kwargs["version_main"] = chrome_major
+
+    # Pakai profile asli Windows agar pilihan profile muncul sesuai browser harian.
+    if os.name == "nt":
+        local_app_data = os.environ.get("LOCALAPPDATA", "")
+        default_user_data = (
+            os.path.join(local_app_data, "Google", "Chrome", "User Data") if local_app_data else ""
+        )
+        user_data_dir = (os.environ.get("CHROME_USER_DATA_DIR") or default_user_data).strip()
+        if user_data_dir and os.path.isdir(user_data_dir):
+            chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
+            print("[INFO] Chrome user-data-dir:", user_data_dir)
 
     try:
-        return uc.Chrome(**driver_kwargs)
+        driver = webdriver.Chrome(options=chrome_options)
     except Exception as exc:
-        # Fallback jika UC mengambil driver major yang tidak cocok.
-        msg = str(exc)
-        m = re.search(r"Current browser version is (\d+)\.", msg)
-        if m:
-            retry_major = int(m.group(1))
-            if driver_kwargs.get("version_main") != retry_major:
-                print("RETRY UC DENGAN version_main:", retry_major)
-                retry_options = uc.ChromeOptions()
-                for arg in getattr(chrome_options, "arguments", []):
-                    retry_options.add_argument(arg)
-                if chrome_bin:
-                    retry_options.binary_location = chrome_bin
-                retry_kwargs = dict(driver_kwargs)
-                retry_kwargs["options"] = retry_options
-                retry_kwargs["version_main"] = retry_major
-                return uc.Chrome(**retry_kwargs)
+        msg = str(exc).lower()
+        if "user data directory is already in use" in msg or "profile appears to be in use" in msg:
+            raise RuntimeError(
+                "Chrome profile sedang dipakai proses lain. Tutup semua Chrome lalu jalankan ulang."
+            ) from exc
         raise
+    print("[INFO] Selenium native Chrome mode aktif.")
+    return driver
 
 
 def wait_for_windows_profile_selection(driver_d):
@@ -408,7 +343,7 @@ def wait_for_windows_profile_selection(driver_d):
     print(f"[INFO] Pilih profil Chrome dulu (timeout {timeout} detik)...")
     deadline = time.time() + timeout
     selected_handle = None
-    force_picker = os.environ.get("FORCE_PROFILE_PICKER", "").strip().lower() in {"1", "true", "yes"}
+    force_picker = os.environ.get("FORCE_PROFILE_PICKER", "1").strip().lower() in {"1", "true", "yes"}
     force_picker_done = False
 
     while time.time() < deadline:
