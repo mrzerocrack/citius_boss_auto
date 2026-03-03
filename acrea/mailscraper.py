@@ -4,6 +4,7 @@ import sys
 import datetime
 import re
 import time
+import socket
 from time import sleep, strftime
 import random
 import secrets
@@ -151,6 +152,73 @@ def detect_chrome_major(chrome_bin):
         except Exception:
             pass
     return 0
+
+
+def find_free_port():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return int(port)
+
+
+def wait_devtools_ready(port, timeout=35):
+    deadline = time.time() + timeout
+    url = f"http://127.0.0.1:{port}/json/version"
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=1) as resp:
+                data = resp.read().decode("utf-8", errors="replace")
+                if "webSocketDebuggerUrl" in data:
+                    return True
+        except Exception:
+            pass
+        sleep(0.5)
+    return False
+
+
+def kill_windows_chrome_processes():
+    if os.name != "nt":
+        return
+    for cmd in (
+        ["taskkill", "/F", "/IM", "chrome.exe", "/T"],
+        ["taskkill", "/F", "/IM", "chromedriver.exe", "/T"],
+    ):
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, check=False)
+        except Exception:
+            pass
+    sleep(1)
+
+
+def make_driver_windows_attach(chrome_bin, user_data_dir=""):
+    if os.name != "nt":
+        raise RuntimeError("Mode attach hanya untuk Windows.")
+    if not chrome_bin:
+        raise RuntimeError("Chrome binary tidak ditemukan.")
+
+    debug_port = find_free_port()
+    cmd = [
+        chrome_bin,
+        f"--remote-debugging-port={debug_port}",
+        "--remote-allow-origins=*",
+        "--no-first-run",
+        "--no-default-browser-check",
+    ]
+    if user_data_dir:
+        cmd.append(f"--user-data-dir={user_data_dir}")
+
+    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    if not wait_devtools_ready(debug_port, timeout=35):
+        raise RuntimeError(f"DevTools port {debug_port} tidak siap.")
+
+    attach_options = webdriver.ChromeOptions()
+    attach_options.binary_location = chrome_bin
+    attach_options.add_experimental_option("debuggerAddress", f"127.0.0.1:{debug_port}")
+    driver = webdriver.Chrome(options=attach_options)
+    print("[INFO] Fallback attach mode aktif, debugger port:", debug_port)
+    return driver
 
 
 manifest_json = ""
@@ -303,6 +371,7 @@ def make_driver():
         chrome_options.binary_location = chrome_bin
 
     # Pakai profile asli Windows agar pilihan profile muncul sesuai browser harian.
+    user_data_dir = ""
     if os.name == "nt":
         local_app_data = os.environ.get("LOCALAPPDATA", "")
         default_user_data = (
@@ -321,6 +390,12 @@ def make_driver():
             raise RuntimeError(
                 "Chrome profile sedang dipakai proses lain. Tutup semua Chrome lalu jalankan ulang."
             ) from exc
+        if os.name == "nt" and "devtoolsactiveport file doesn't exist" in msg:
+            print("[WARN] Native ChromeDriver gagal (DevToolsActivePort). Coba fallback attach mode.")
+            if os.environ.get("KILL_CHROME_BEFORE_ATTACH", "1").strip().lower() in {"1", "true", "yes"}:
+                print("[INFO] Menutup proses Chrome/ChromeDriver lama sebelum attach...")
+                kill_windows_chrome_processes()
+            return make_driver_windows_attach(chrome_bin, user_data_dir=user_data_dir)
         raise
     print("[INFO] Selenium native Chrome mode aktif.")
     return driver
