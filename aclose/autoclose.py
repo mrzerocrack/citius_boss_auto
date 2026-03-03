@@ -43,12 +43,16 @@ except Exception:
 def resolve_chrome_binary():
 	candidates = []
 	if os.name == "nt":
+		local_app_data = os.environ.get("LOCALAPPDATA", "")
+		program_files = os.environ.get("PROGRAMFILES", r"C:\Program Files")
+		program_files_x86 = os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
 		candidates.extend(
 			[
 				shutil.which("chrome"),
 				shutil.which("chrome.exe"),
-				r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-				r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+				os.path.join(local_app_data, "Google", "Chrome", "Application", "chrome.exe") if local_app_data else "",
+				os.path.join(program_files, "Google", "Chrome", "Application", "chrome.exe"),
+				os.path.join(program_files_x86, "Google", "Chrome", "Application", "chrome.exe"),
 			]
 		)
 	else:
@@ -61,8 +65,15 @@ def resolve_chrome_binary():
 				shutil.which("chromium-browser"),
 			]
 		)
+	seen = set()
 	for path in candidates:
-		if path and os.path.exists(path):
+		if not path:
+			continue
+		norm = os.path.normcase(os.path.normpath(path))
+		if norm in seen:
+			continue
+		seen.add(norm)
+		if os.path.exists(path):
 			return path
 	return ""
 
@@ -93,8 +104,23 @@ def build_uc_driver(chrome_options):
 	chrome_major = detect_chrome_major(chrome_bin)
 	if chrome_major > 0:
 		driver_kwargs["version_main"] = chrome_major
-		print("AUTO-DETECT CHROME MAJOR:", chrome_major)
-	return uc.Chrome(**driver_kwargs)
+		print("AUTO-DETECT CHROME MAJOR:", chrome_major, "binary:", chrome_bin)
+	else:
+		print("AUTO-DETECT CHROME MAJOR gagal, lanjut default UC")
+	try:
+		return uc.Chrome(**driver_kwargs)
+	except Exception as exc:
+		# Fallback jika UC mengambil driver major yang tidak cocok.
+		msg = str(exc)
+		m = re.search(r"Current browser version is (\d+)\.", msg)
+		if m:
+			retry_major = int(m.group(1))
+			if driver_kwargs.get("version_main") != retry_major:
+				print("RETRY UC DENGAN version_main:", retry_major)
+				retry_kwargs = dict(driver_kwargs)
+				retry_kwargs["version_main"] = retry_major
+				return uc.Chrome(**retry_kwargs)
+		raise
 
 def element_presence(by,by_val,time, driver):
 	element_present = EC.presence_of_element_located((by, by_val))
