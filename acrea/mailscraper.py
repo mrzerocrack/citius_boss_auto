@@ -289,7 +289,7 @@ def make_driver():
     chrome_options.add_argument("--no-default-browser-check")
     chrome_options.add_argument("--disable-popup-blocking")
 
-    driver_kwargs = {"options": chrome_options}
+    driver_kwargs = {"options": chrome_options, "use_subprocess": False}
     chrome_bin = resolve_chrome_binary()
     if chrome_bin:
         chrome_options.binary_location = chrome_bin
