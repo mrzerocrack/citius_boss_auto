@@ -325,9 +325,9 @@ def make_driver():
 
 def wait_for_windows_profile_selection(driver_d):
     if os.name != "nt":
-        return
+        return True
     if os.environ.get("DISABLE_PROFILE_PICKER_WAIT", "").strip().lower() in {"1", "true", "yes"}:
-        return
+        return True
 
     timeout = 180
     try:
@@ -335,13 +335,13 @@ def wait_for_windows_profile_selection(driver_d):
     except Exception:
         timeout = 180
     if timeout <= 0:
-        return
+        return True
 
     try:
         driver_d.get("chrome://profile-picker/")
     except Exception as exc:
         print("[INFO] gagal buka profile picker:", exc)
-        return
+        return True
 
     print(f"[INFO] Pilih profil Chrome dulu (timeout {timeout} detik)...")
     deadline = time.time() + timeout
@@ -369,29 +369,32 @@ def wait_for_windows_profile_selection(driver_d):
 
     if not selected_handle:
         print("[WARN] Timeout pilih profil, lanjut otomatis.")
-        return
+        return True
 
+    # Jangan menutup window apa pun di tahap ini. Menutup handle yang salah bisa
+    # memutus sesi WebDriver (InvalidSessionId) setelah profile picker.
     try:
-        handles = list(driver_d.window_handles)
-        for handle in handles:
-            if handle == selected_handle:
-                continue
-            try:
-                driver_d.switch_to.window(handle)
-                driver_d.close()
-            except Exception:
-                pass
         driver_d.switch_to.window(selected_handle)
-    except Exception:
-        pass
+        _ = driver_d.current_url
+    except Exception as exc:
+        print("[WARN] Sesi WebDriver tidak valid setelah pilih profil:", exc)
+        return False
 
     print("[INFO] Profil dipilih, lanjut proses.")
+    return True
 
 
 def run():
     # proxy kamu gak dipakai, jadi diabaikan
     driver_d = make_driver()
-    wait_for_windows_profile_selection(driver_d)
+    session_ok = wait_for_windows_profile_selection(driver_d)
+    if not session_ok:
+        print("[INFO] Re-init driver setelah profile picker.")
+        try:
+            driver_d.quit()
+        except Exception:
+            pass
+        driver_d = make_driver()
 
     driver_d.get("https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Fmail.google.com%2Fmail%2F&dsh=S-1238628894%3A1769658398148796&ifkv=AXbMIuCW7KLzC_Q8mlpZpr6v_D4HrrIY3tiSN98tJOblxewSwhjwofLkDRONKYNNaEXG-imVAlkN&rip=1&sacu=1&service=mail&flowName=GlifWebSignIn&flowEntry=ServiceLogin")
 
