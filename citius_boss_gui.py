@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
+import configparser
 import os
+import shutil
 import sys
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -179,18 +182,21 @@ class MainWindow(QMainWindow):
         self.btn_start = QPushButton("Start")
         self.btn_stop = QPushButton("Stop")
         self.btn_stop_all = QPushButton("Stop All")
+        self.btn_update = QPushButton("Update")
         self.btn_open_folder = QPushButton("Buka Folder")
         self.btn_open_script = QPushButton("Buka Script")
         self.btn_open_needs = QPushButton("Buka Kebutuhan")
         self.btn_start.clicked.connect(self._start_selected)
         self.btn_stop.clicked.connect(self._stop_selected)
         self.btn_stop_all.clicked.connect(self._stop_all)
+        self.btn_update.clicked.connect(self._update_project_clicked)
         self.btn_open_folder.clicked.connect(self._open_folder_selected)
         self.btn_open_script.clicked.connect(self._open_script_selected)
         self.btn_open_needs.clicked.connect(self._open_needs_selected)
         btn_row.addWidget(self.btn_start)
         btn_row.addWidget(self.btn_stop)
         btn_row.addWidget(self.btn_stop_all)
+        btn_row.addWidget(self.btn_update)
         btn_row.addWidget(self.btn_open_folder)
         btn_row.addWidget(self.btn_open_script)
         btn_row.addWidget(self.btn_open_needs)
@@ -401,6 +407,120 @@ class MainWindow(QMainWindow):
         for key in self.modules:
             self._stop_module(key)
 
+    def _running_module_names(self) -> List[str]:
+        running: List[str] = []
+        for spec in MODULES:
+            proc = self.modules[spec.key].process
+            if proc and proc.state() != QProcess.ProcessState.NotRunning:
+                running.append(spec.name)
+        return running
+
+    def _update_project_clicked(self) -> None:
+        running = self._running_module_names()
+        if running:
+            QMessageBox.warning(
+                self,
+                "Update Ditolak",
+                "Stop dulu semua proses sebelum update.\n"
+                + "\n".join(f"- {name}" for name in running),
+            )
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "Konfirmasi Update",
+            "Tarik versi terbaru sekarang? (jika ada perubahan lokal, bisa terkena overwrite)",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            ok, detail = self._update_project()
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        if ok:
+            QMessageBox.information(self, "Update Berhasil", detail)
+        else:
+            QMessageBox.critical(self, "Update Gagal", detail)
+
+    def _update_project(self) -> tuple[bool, str]:
+        remote_name, _remote_url, branch = self._read_git_target()
+        if not shutil.which("git"):
+            return (
+                False,
+                "Git tidak ditemukan di OS.\n"
+                "Project ini wajib pakai git update. Install dulu git lalu jalankan ulang GUI.",
+            )
+        ok, msg = self._run_git_pull(remote_name, branch)
+        return ok, msg
+
+    def _read_git_target(self) -> tuple[str, str, str]:
+        remote_name = "origin"
+        branch = "main"
+        remote_url = ""
+        git_dir = ROOT_DIR / ".git"
+
+        head_path = git_dir / "HEAD"
+        if head_path.is_file():
+            try:
+                head_content = head_path.read_text(encoding="utf-8", errors="replace").strip()
+                if head_content.startswith("ref: refs/heads/"):
+                    branch = head_content.rsplit("/", 1)[-1] or branch
+            except Exception:
+                pass
+
+        config_path = git_dir / "config"
+        if not config_path.is_file():
+            return remote_name, remote_url, branch
+
+        cfg = configparser.ConfigParser()
+        try:
+            cfg.read(config_path, encoding="utf-8")
+        except Exception:
+            return remote_name, remote_url, branch
+
+        branch_section = f'branch "{branch}"'
+        if cfg.has_section(branch_section):
+            remote_name = cfg.get(branch_section, "remote", fallback=remote_name)
+            merge_ref = cfg.get(branch_section, "merge", fallback=f"refs/heads/{branch}")
+            if merge_ref.startswith("refs/heads/"):
+                branch = merge_ref.rsplit("/", 1)[-1] or branch
+
+        remote_section = f'remote "{remote_name}"'
+        if cfg.has_section(remote_section):
+            remote_url = cfg.get(remote_section, "url", fallback="")
+        elif cfg.has_section('remote "origin"'):
+            remote_name = "origin"
+            remote_url = cfg.get('remote "origin"', "url", fallback="")
+
+        return remote_name, remote_url, branch
+
+    def _run_git_pull(self, remote_name: str, branch: str) -> tuple[bool, str]:
+        cmd = ["git", "-C", str(ROOT_DIR), "pull", "--ff-only", remote_name, branch]
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=180,
+                check=False,
+            )
+        except Exception as exc:
+            return False, f"git pull gagal dijalankan: {exc}"
+
+        out = (result.stdout or "").strip()
+        err = (result.stderr or "").strip()
+        detail_lines = [f"$ {' '.join(cmd)}", f"exit={result.returncode}"]
+        if out:
+            detail_lines.append(f"stdout:\n{out}")
+        if err:
+            detail_lines.append(f"stderr:\n{err}")
+        return result.returncode == 0, "\n".join(detail_lines)
+
     def _open_folder_selected(self) -> None:
         spec = self._current_spec()
         if spec is None:
@@ -447,6 +567,14 @@ class MainWindow(QMainWindow):
 
 def main() -> int:
     app = QApplication(sys.argv)
+    if not shutil.which("git"):
+        QMessageBox.critical(
+            None,
+            "Git Wajib",
+            "Git tidak ditemukan di OS.\n"
+            "Silakan install git terlebih dahulu, lalu jalankan kembali citius_boss_gui.py.",
+        )
+        return 1
     win = MainWindow()
     win.show()
     return app.exec()
