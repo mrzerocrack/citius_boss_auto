@@ -12,6 +12,8 @@ import json
 import psutil
 import urllib.request
 import pickle
+import subprocess
+import shutil
 from PIL import Image
 
 import undetected_chromedriver as uc  # ✅ pakai ini, bukan "from undetected_chromedriver import Chrome"
@@ -24,7 +26,48 @@ from selenium.webdriver.support import expected_conditions as EC
 # =========================
 # CONFIG
 # =========================
-CHROME_MAJOR_VERSION = 144  # ✅ KUNCI UC ke chromedriver 144
+def resolve_chrome_binary():
+    candidates = []
+    if os.name == "nt":
+        candidates.extend(
+            [
+                shutil.which("chrome"),
+                shutil.which("chrome.exe"),
+                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            ]
+        )
+    else:
+        candidates.extend(
+            [
+                shutil.which("google-chrome"),
+                shutil.which("google-chrome-stable"),
+                "/opt/google/chrome/chrome",
+                shutil.which("chromium"),
+                shutil.which("chromium-browser"),
+            ]
+        )
+    for path in candidates:
+        if path and os.path.exists(path):
+            return path
+    return ""
+
+
+def detect_chrome_major(chrome_bin):
+    if not chrome_bin:
+        return 0
+    try:
+        proc = subprocess.run([chrome_bin, "--version"], capture_output=True, text=True, check=False)
+    except Exception:
+        return 0
+    raw = f"{proc.stdout}\n{proc.stderr}"
+    m = re.search(r"(\d+)\.\d+\.\d+\.\d+", raw)
+    if not m:
+        return 0
+    try:
+        return int(m.group(1))
+    except Exception:
+        return 0
 
 manifest_json = ""
 background_js = ""
@@ -167,11 +210,16 @@ def make_driver():
     chrome_options.add_argument("--no-default-browser-check")
     chrome_options.add_argument("--disable-popup-blocking")
 
-    # ✅ KUNCI chromedriver major version = 144
-    driver = uc.Chrome(
-        options=chrome_options,
-        version_main=CHROME_MAJOR_VERSION
-    )
+    driver_kwargs = {"options": chrome_options}
+    chrome_bin = resolve_chrome_binary()
+    if chrome_bin:
+        chrome_options.binary_location = chrome_bin
+        driver_kwargs["browser_executable_path"] = chrome_bin
+    chrome_major = detect_chrome_major(chrome_bin)
+    if chrome_major > 0:
+        driver_kwargs["version_main"] = chrome_major
+        print("AUTO-DETECT CHROME MAJOR:", chrome_major)
+    driver = uc.Chrome(**driver_kwargs)
     return driver
 
 

@@ -25,12 +25,75 @@ import openpyxl
 import json,urllib.request
 import pickle
 from PIL import Image
+import subprocess
+import shutil
+import tkinter as tk
+from tkinter import messagebox
+
+try:
+	import win32api  # type: ignore
+except Exception:
+	win32api = None
 
 
 #DATE TIME GMT DAN LOCAL
 # print("\nGMT: "+time.strftime("%a, %d %b %Y %I:%M:%S %p %Z", time.gmtime()))
 # print("Local: "+strftime("%a, %d %b %Y %I:%M:%S %p %Z\n"))
-CHROME_MAJOR_VERSION = 144
+def resolve_chrome_binary():
+	candidates = []
+	if os.name == "nt":
+		candidates.extend(
+			[
+				shutil.which("chrome"),
+				shutil.which("chrome.exe"),
+				r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+				r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+			]
+		)
+	else:
+		candidates.extend(
+			[
+				shutil.which("google-chrome"),
+				shutil.which("google-chrome-stable"),
+				"/opt/google/chrome/chrome",
+				shutil.which("chromium"),
+				shutil.which("chromium-browser"),
+			]
+		)
+	for path in candidates:
+		if path and os.path.exists(path):
+			return path
+	return ""
+
+
+def detect_chrome_major(chrome_bin):
+	if not chrome_bin:
+		return 0
+	try:
+		proc = subprocess.run([chrome_bin, "--version"], capture_output=True, text=True, check=False)
+	except Exception:
+		return 0
+	raw = f"{proc.stdout}\n{proc.stderr}"
+	m = re.search(r"(\d+)\.\d+\.\d+\.\d+", raw)
+	if not m:
+		return 0
+	try:
+		return int(m.group(1))
+	except Exception:
+		return 0
+
+
+def build_uc_driver(chrome_options):
+	driver_kwargs = {"options": chrome_options}
+	chrome_bin = resolve_chrome_binary()
+	if chrome_bin:
+		chrome_options.binary_location = chrome_bin
+		driver_kwargs["browser_executable_path"] = chrome_bin
+	chrome_major = detect_chrome_major(chrome_bin)
+	if chrome_major > 0:
+		driver_kwargs["version_main"] = chrome_major
+		print("AUTO-DETECT CHROME MAJOR:", chrome_major)
+	return uc.Chrome(**driver_kwargs)
 stop = False
 def shot_api(incident_id, atm_id, problem):
 	print('shot_api ',incident_id,atm_id,problem)
@@ -72,7 +135,7 @@ def run():
 	chrome_options.add_argument('--headless')
 	#chrome_options.add_argument('--no-sandbox')
 	#chrome_options.add_argument('--proxy-server='+input_proxy.split("-")[0])
-	driver_d = uc.Chrome(options=chrome_options, version_main=CHROME_MAJOR_VERSION)
+	driver_d = build_uc_driver(chrome_options)
 	driver_d.maximize_window()
 	has_cookie = 0
 	driver_d.get("https://app.slmugmandiri.co.id/sistrack_new/")
@@ -258,7 +321,24 @@ def show_notif_captcha():
 	# # Tombol OK
 	# ok_button = tk.Button(notification, text="OK", command=lambda: is_login_(notification))
 	# ok_button.pack()
-	win32api.MessageBox(0, "Login manual, klo dah sukses login klik OK dibawah", "INFO", 0x00001000)
+	notify_info("Login manual, klo dah sukses login klik OK dibawah", "INFO")
+
+
+def notify_info(message, title="INFO"):
+	if win32api is not None:
+		try:
+			win32api.MessageBox(0, message, title, 0x00001000)
+			return
+		except Exception:
+			pass
+	try:
+		root = tk.Tk()
+		root.withdraw()
+		root.attributes("-topmost", True)
+		messagebox.showinfo(title, message, parent=root)
+		root.destroy()
+	except Exception:
+		print(f"[{title}] {message}")
 
 
 while True:
