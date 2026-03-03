@@ -117,7 +117,13 @@ def build_uc_driver(chrome_options):
 			retry_major = int(m.group(1))
 			if driver_kwargs.get("version_main") != retry_major:
 				print("RETRY UC DENGAN version_main:", retry_major)
+				retry_options = uc.ChromeOptions()
+				for arg in getattr(chrome_options, "arguments", []):
+					retry_options.add_argument(arg)
+				if chrome_bin:
+					retry_options.binary_location = chrome_bin
 				retry_kwargs = dict(driver_kwargs)
+				retry_kwargs["options"] = retry_options
 				retry_kwargs["version_main"] = retry_major
 				return uc.Chrome(**retry_kwargs)
 		raise

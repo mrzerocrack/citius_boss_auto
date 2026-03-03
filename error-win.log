@@ -1,11 +1,9 @@
 [START] cwd=C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea cmd=C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\python.exe -u mailscraper.py
+AUTO-DETECT CHROME MAJOR gagal, lanjut default UC
+RETRY UC DENGAN version_main: 145
 Traceback (most recent call last):
-  File "C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea\mailscraper.py", line 340, in <module>
-    run()
-  File "C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea\mailscraper.py", line 228, in run
-    driver_d = make_driver()
-  File "C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea\mailscraper.py", line 222, in make_driver
-    driver = uc.Chrome(**driver_kwargs)
+  File "C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea\mailscraper.py", line 239, in make_driver
+    return uc.Chrome(**driver_kwargs)
   File "C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\lib\site-packages\undetected_chromedriver\_init.py", line 466, in __init_
     super(Chrome, self)._init_(
   File "C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\lib\site-packages\selenium\webdriver\chrome\webdriver.py", line 45, in _init_
@@ -24,42 +22,54 @@ Traceback (most recent call last):
     self.error_handler.check_response(response)
   File "C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\lib\site-packages\selenium\webdriver\remote\errorhandler.py", line 232, in check_response
     raise exception_class(message, screen, stacktrace)
-selenium.common.exceptions.SessionNotCreatedException: Message: session not created: cannot connect to chrome at 127.0.0.1:64638
+selenium.common.exceptions.SessionNotCreatedException: Message: session not created: cannot connect to chrome at 127.0.0.1:60373
 from session not created: This version of ChromeDriver only supports Chrome version 146
 Current browser version is 145.0.7632.110; For documentation on this error, please visit: https://www.selenium.dev/documentation/webdriver/troubleshooting/errors#sessionnotcreatedexception
 Stacktrace:
-	undetected_chromedriver!GetHandleVerifier [0x73e813+10ad3]
-	undetected_chromedriver!GetHandleVerifier [0x73e944+10c04]
-	undetected_chromedriver!(No symbol) [0x551fc0]
-	undetected_chromedriver!(No symbol) [0x58d502]
-	undetected_chromedriver!(No symbol) [0x58c52c]
-	undetected_chromedriver!(No symbol) [0x582625]
-	undetected_chromedriver!(No symbol) [0x582446]
-	undetected_chromedriver!(No symbol) [0x5c96cf]
-	undetected_chromedriver!(No symbol) [0x5c8ee7]
-	undetected_chromedriver!(No symbol) [0x5bd766]
-	undetected_chromedriver!(No symbol) [0x5900e9]
-	undetected_chromedriver!(No symbol) [0x590ea4]
-	undetected_chromedriver!GetHandleVerifier [0x9c1359+293619]
-	undetected_chromedriver!GetHandleVerifier [0x9bca7d+28ed3d]
-	undetected_chromedriver!GetHandleVerifier [0x9dab9b+2ace5b]
-	undetected_chromedriver!GetHandleVerifier [0x7589a8+2ac68]
-	undetected_chromedriver!GetHandleVerifier [0x76049d+3275d]
-	undetected_chromedriver!GetHandleVerifier [0x747328+195e8]
-	undetected_chromedriver!GetHandleVerifier [0x7474f2+197b2]
-	undetected_chromedriver!GetHandleVerifier [0x73065a+291a]
+	undetected_chromedriver!GetHandleVerifier [0x82e813+10ad3]
+	undetected_chromedriver!GetHandleVerifier [0x82e944+10c04]
+	undetected_chromedriver!(No symbol) [0x641fc0]
+	undetected_chromedriver!(No symbol) [0x67d502]
+	undetected_chromedriver!(No symbol) [0x67c52c]
+	undetected_chromedriver!(No symbol) [0x672625]
+	undetected_chromedriver!(No symbol) [0x672446]
+	undetected_chromedriver!(No symbol) [0x6b96cf]
+	undetected_chromedriver!(No symbol) [0x6b8ee7]
+	undetected_chromedriver!(No symbol) [0x6ad766]
+	undetected_chromedriver!(No symbol) [0x6800e9]
+	undetected_chromedriver!(No symbol) [0x680ea4]
+	undetected_chromedriver!GetHandleVerifier [0xab1359+293619]
+	undetected_chromedriver!GetHandleVerifier [0xaaca7d+28ed3d]
+	undetected_chromedriver!GetHandleVerifier [0xacab9b+2ace5b]
+	undetected_chromedriver!GetHandleVerifier [0x8489a8+2ac68]
+	undetected_chromedriver!GetHandleVerifier [0x85049d+3275d]
+	undetected_chromedriver!GetHandleVerifier [0x837328+195e8]
+	undetected_chromedriver!GetHandleVerifier [0x8374f2+197b2]
+	undetected_chromedriver!GetHandleVerifier [0x82065a+291a]
 	KERNEL32!BaseThreadInitThunk [0x76465d49+19]
 	ntdll!RtlInitializeExceptionChain [0x7768d83b+6b]
 	ntdll!RtlGetAppContainerNamedObjectPath [0x7768d7c1+231]
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea\mailscraper.py", line 368, in <module>
+    run()
+  File "C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea\mailscraper.py", line 256, in run
+    driver_d = make_driver()
+  File "C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea\mailscraper.py", line 250, in make_driver
+    return uc.Chrome(**retry_kwargs)
+  File "C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\lib\site-packages\undetected_chromedriver\_init.py", line 269, in __init_
+    raise RuntimeError("you cannot reuse the ChromeOptions object")
+RuntimeError: you cannot reuse the ChromeOptions object
 [STOP] exit=1
 [START] cwd=C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea cmd=C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\python.exe -u mailscraper.py
+AUTO-DETECT CHROME MAJOR gagal, lanjut default UC
+RETRY UC DENGAN version_main: 145
 Traceback (most recent call last):
-  File "C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea\mailscraper.py", line 340, in <module>
-    run()
-  File "C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea\mailscraper.py", line 228, in run
-    driver_d = make_driver()
-  File "C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea\mailscraper.py", line 222, in make_driver
-    driver = uc.Chrome(**driver_kwargs)
+  File "C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea\mailscraper.py", line 239, in make_driver
+    return uc.Chrome(**driver_kwargs)
   File "C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\lib\site-packages\undetected_chromedriver\_init.py", line 466, in __init_
     super(Chrome, self)._init_(
   File "C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\lib\site-packages\selenium\webdriver\chrome\webdriver.py", line 45, in _init_
@@ -78,31 +88,111 @@ Traceback (most recent call last):
     self.error_handler.check_response(response)
   File "C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\lib\site-packages\selenium\webdriver\remote\errorhandler.py", line 232, in check_response
     raise exception_class(message, screen, stacktrace)
-selenium.common.exceptions.SessionNotCreatedException: Message: session not created: cannot connect to chrome at 127.0.0.1:55984
+selenium.common.exceptions.SessionNotCreatedException: Message: session not created: cannot connect to chrome at 127.0.0.1:51657
 from session not created: This version of ChromeDriver only supports Chrome version 146
 Current browser version is 145.0.7632.110; For documentation on this error, please visit: https://www.selenium.dev/documentation/webdriver/troubleshooting/errors#sessionnotcreatedexception
 Stacktrace:
-	undetected_chromedriver!GetHandleVerifier [0xb0e813+10ad3]
-	undetected_chromedriver!GetHandleVerifier [0xb0e944+10c04]
-	undetected_chromedriver!(No symbol) [0x921fc0]
-	undetected_chromedriver!(No symbol) [0x95d502]
-	undetected_chromedriver!(No symbol) [0x95c52c]
-	undetected_chromedriver!(No symbol) [0x952625]
-	undetected_chromedriver!(No symbol) [0x952446]
-	undetected_chromedriver!(No symbol) [0x9996cf]
-	undetected_chromedriver!(No symbol) [0x998ee7]
-	undetected_chromedriver!(No symbol) [0x98d766]
-	undetected_chromedriver!(No symbol) [0x9600e9]
-	undetected_chromedriver!(No symbol) [0x960ea4]
-	undetected_chromedriver!GetHandleVerifier [0xd91359+293619]
-	undetected_chromedriver!GetHandleVerifier [0xd8ca7d+28ed3d]
-	undetected_chromedriver!GetHandleVerifier [0xdaab9b+2ace5b]
-	undetected_chromedriver!GetHandleVerifier [0xb289a8+2ac68]
-	undetected_chromedriver!GetHandleVerifier [0xb3049d+3275d]
-	undetected_chromedriver!GetHandleVerifier [0xb17328+195e8]
-	undetected_chromedriver!GetHandleVerifier [0xb174f2+197b2]
-	undetected_chromedriver!GetHandleVerifier [0xb0065a+291a]
+	undetected_chromedriver!GetHandleVerifier [0xace813+10ad3]
+	undetected_chromedriver!GetHandleVerifier [0xace944+10c04]
+	undetected_chromedriver!(No symbol) [0x8e1fc0]
+	undetected_chromedriver!(No symbol) [0x91d502]
+	undetected_chromedriver!(No symbol) [0x91c52c]
+	undetected_chromedriver!(No symbol) [0x912625]
+	undetected_chromedriver!(No symbol) [0x912446]
+	undetected_chromedriver!(No symbol) [0x9596cf]
+	undetected_chromedriver!(No symbol) [0x958ee7]
+	undetected_chromedriver!(No symbol) [0x94d766]
+	undetected_chromedriver!(No symbol) [0x9200e9]
+	undetected_chromedriver!(No symbol) [0x920ea4]
+	undetected_chromedriver!GetHandleVerifier [0xd51359+293619]
+	undetected_chromedriver!GetHandleVerifier [0xd4ca7d+28ed3d]
+	undetected_chromedriver!GetHandleVerifier [0xd6ab9b+2ace5b]
+	undetected_chromedriver!GetHandleVerifier [0xae89a8+2ac68]
+	undetected_chromedriver!GetHandleVerifier [0xaf049d+3275d]
+	undetected_chromedriver!GetHandleVerifier [0xad7328+195e8]
+	undetected_chromedriver!GetHandleVerifier [0xad74f2+197b2]
+	undetected_chromedriver!GetHandleVerifier [0xac065a+291a]
 	KERNEL32!BaseThreadInitThunk [0x76465d49+19]
 	ntdll!RtlInitializeExceptionChain [0x7768d83b+6b]
 	ntdll!RtlGetAppContainerNamedObjectPath [0x7768d7c1+231]
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea\mailscraper.py", line 368, in <module>
+    run()
+  File "C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea\mailscraper.py", line 256, in run
+    driver_d = make_driver()
+  File "C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea\mailscraper.py", line 250, in make_driver
+    return uc.Chrome(**retry_kwargs)
+  File "C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\lib\site-packages\undetected_chromedriver\_init.py", line 269, in __init_
+    raise RuntimeError("you cannot reuse the ChromeOptions object")
+RuntimeError: you cannot reuse the ChromeOptions object
+[STOP] exit=1
+[START] cwd=C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea cmd=C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\python.exe -u mailscraper.py
+AUTO-DETECT CHROME MAJOR gagal, lanjut default UC
+RETRY UC DENGAN version_main: 145
+Traceback (most recent call last):
+  File "C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea\mailscraper.py", line 239, in make_driver
+    return uc.Chrome(**driver_kwargs)
+  File "C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\lib\site-packages\undetected_chromedriver\_init.py", line 466, in __init_
+    super(Chrome, self)._init_(
+  File "C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\lib\site-packages\selenium\webdriver\chrome\webdriver.py", line 45, in _init_
+    super()._init_(
+  File "C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\lib\site-packages\selenium\webdriver\chromium\webdriver.py", line 66, in _init_
+    super()._init_(command_executor=executor, options=self.options)
+  File "C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\lib\site-packages\selenium\webdriver\common\webdriver.py", line 25, in _init_
+    super()._init_(*args, **kwargs)
+  File "C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\lib\site-packages\selenium\webdriver\remote\webdriver.py", line 271, in _init_
+    self.start_session(capabilities)
+  File "C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\lib\site-packages\undetected_chromedriver\_init_.py", line 724, in start_session
+    super(selenium.webdriver.chrome.webdriver.WebDriver, self).start_session(
+  File "C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\lib\site-packages\selenium\webdriver\remote\webdriver.py", line 366, in start_session
+    response = self.execute(Command.NEW_SESSION, caps)["value"]
+  File "C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\lib\site-packages\selenium\webdriver\remote\webdriver.py", line 446, in execute
+    self.error_handler.check_response(response)
+  File "C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\lib\site-packages\selenium\webdriver\remote\errorhandler.py", line 232, in check_response
+    raise exception_class(message, screen, stacktrace)
+selenium.common.exceptions.SessionNotCreatedException: Message: session not created: cannot connect to chrome at 127.0.0.1:53485
+from session not created: This version of ChromeDriver only supports Chrome version 146
+Current browser version is 145.0.7632.117; For documentation on this error, please visit: https://www.selenium.dev/documentation/webdriver/troubleshooting/errors#sessionnotcreatedexception
+Stacktrace:
+	undetected_chromedriver!GetHandleVerifier [0xf6e813+10ad3]
+	undetected_chromedriver!GetHandleVerifier [0xf6e944+10c04]
+	undetected_chromedriver!(No symbol) [0xd81fc0]
+	undetected_chromedriver!(No symbol) [0xdbd502]
+	undetected_chromedriver!(No symbol) [0xdbc52c]
+	undetected_chromedriver!(No symbol) [0xdb2625]
+	undetected_chromedriver!(No symbol) [0xdb2446]
+	undetected_chromedriver!(No symbol) [0xdf96cf]
+	undetected_chromedriver!(No symbol) [0xdf8ee7]
+	undetected_chromedriver!(No symbol) [0xded766]
+	undetected_chromedriver!(No symbol) [0xdc00e9]
+	undetected_chromedriver!(No symbol) [0xdc0ea4]
+	undetected_chromedriver!GetHandleVerifier [0x11f1359+293619]
+	undetected_chromedriver!GetHandleVerifier [0x11eca7d+28ed3d]
+	undetected_chromedriver!GetHandleVerifier [0x120ab9b+2ace5b]
+	undetected_chromedriver!GetHandleVerifier [0xf889a8+2ac68]
+	undetected_chromedriver!GetHandleVerifier [0xf9049d+3275d]
+	undetected_chromedriver!GetHandleVerifier [0xf77328+195e8]
+	undetected_chromedriver!GetHandleVerifier [0xf774f2+197b2]
+	undetected_chromedriver!GetHandleVerifier [0xf6065a+291a]
+	KERNEL32!BaseThreadInitThunk [0x76465d49+19]
+	ntdll!RtlInitializeExceptionChain [0x7768d83b+6b]
+	ntdll!RtlGetAppContainerNamedObjectPath [0x7768d7c1+231]
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea\mailscraper.py", line 368, in <module>
+    run()
+  File "C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea\mailscraper.py", line 256, in run
+    driver_d = make_driver()
+  File "C:\Users\mrzeroc\Documents\project\citius_boss_auto\acrea\mailscraper.py", line 250, in make_driver
+    return uc.Chrome(**retry_kwargs)
+  File "C:\Users\mrzeroc\AppData\Local\Programs\Python\Python310\lib\site-packages\undetected_chromedriver\_init.py", line 269, in __init_
+    raise RuntimeError("you cannot reuse the ChromeOptions object")
+RuntimeError: you cannot reuse the ChromeOptions object
 [STOP] exit=1
