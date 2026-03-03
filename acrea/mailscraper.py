@@ -337,17 +337,20 @@ def wait_for_windows_profile_selection(driver_d):
     if timeout <= 0:
         return True
 
-    try:
-        driver_d.get("chrome://profile-picker/")
-    except Exception as exc:
-        print("[INFO] gagal buka profile picker:", exc)
-        return True
-
     print(f"[INFO] Pilih profil Chrome dulu (timeout {timeout} detik)...")
     deadline = time.time() + timeout
     selected_handle = None
+    force_picker = os.environ.get("FORCE_PROFILE_PICKER", "").strip().lower() in {"1", "true", "yes"}
+    force_picker_done = False
 
     while time.time() < deadline:
+        if force_picker and not force_picker_done:
+            try:
+                driver_d.get("chrome://profile-picker/")
+            except Exception as exc:
+                print("[INFO] gagal force buka profile picker:", exc)
+            force_picker_done = True
+
         try:
             handles = list(driver_d.window_handles)
         except Exception:
