@@ -369,11 +369,11 @@ def make_driver_attach_existing(chrome_bin):
                 "dan buka URL target dulu."
             )
 
-    if not wait_devtools_ready(debug_port, timeout=15):
-        raise RuntimeError(
-            f"DevTools port {debug_port} tidak siap untuk attach. "
-            "Jika pakai Chrome terbaru, jangan gunakan user-data-dir default; "
-            "pakai user-data-dir khusus untuk mode remote debugging."
+    devtools_ready = wait_devtools_ready(debug_port, timeout=15)
+    if not devtools_ready:
+        print(
+            f"[WARN] DevTools port {debug_port} belum terdeteksi siap via /json/version. "
+            "Coba attach langsung."
         )
 
     attach_options = webdriver.ChromeOptions()
@@ -381,7 +381,16 @@ def make_driver_attach_existing(chrome_bin):
         attach_options.binary_location = chrome_bin
     attach_options.add_experimental_option("debuggerAddress", f"127.0.0.1:{debug_port}")
     print(f"[INFO] Attach ke Chrome existing, port={debug_port}")
-    return webdriver.Chrome(options=attach_options)
+    try:
+        return webdriver.Chrome(options=attach_options)
+    except Exception as exc:
+        if not devtools_ready:
+            raise RuntimeError(
+                f"DevTools port {debug_port} tidak siap untuk attach. "
+                "Jika pakai Chrome terbaru, jangan gunakan user-data-dir default; "
+                "pakai user-data-dir khusus untuk mode remote debugging."
+            ) from exc
+        raise
 
 
 def kill_windows_chrome_processes():

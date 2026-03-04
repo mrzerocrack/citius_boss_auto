@@ -146,7 +146,7 @@ def run():
 	#chrome_options.add_argument('--proxy-server='+input_proxy.split("-")[0])
 	driver_d = build_uc_driver(chrome_options)
 	has_cookie = 0
-	driver_d.get("https://app.slmugmandiri.co.id/sistrack_new/")
+	driver_d.get("https://sistrack.ugarta.co.id/sistrack_new/")
 	login(driver_d)
 	while True:
 		get_tiket = get_data_api('https://boss.citius.co.id/public/api/get_pending_ticket')
@@ -154,7 +154,7 @@ def run():
 
 			try:
 				if data_ticket["status"] == "t":
-					driver_d.get("https://app.slmugmandiri.co.id/sistrack_new/Home")
+					driver_d.get("https://sistrack.ugarta.co.id/sistrack_new/Home")
 			
 					element_presence(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[1]/div[2]/div/label/input", 30, driver_d)
 					driver_d.find_element(By.XPATH, "/html/body/div[2]/div/div/div[2]/div/div[4]/div/div/div/div/div[1]/div[2]/div/label/input").send_keys(data_ticket["ticket_ebs"]+"\n")
