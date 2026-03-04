@@ -814,6 +814,7 @@ def make_driver():
 
         retry_enabled = env_truthy("CHROME_WINDOWS_UC_RETRY", "1")
         fallback_native = env_truthy("CHROME_WINDOWS_UC_FALLBACK_NATIVE", "1")
+        no_subprocess_first = env_truthy("CHROME_WINDOWS_UC_NO_SUBPROCESS_FIRST", "1")
         print("[INFO] Windows UC mode aktif.")
 
         def build_windows_uc_options():
@@ -841,9 +842,21 @@ def make_driver():
             tried.add(key)
             attempts.append((label, bool(use_subprocess), int(version_main or 0)))
 
-        push_attempt("Windows UC attempt-1 use_subprocess=True", True, chrome_major)
+        first_use_subprocess = not no_subprocess_first
+        first_label = (
+            "Windows UC attempt-1 use_subprocess=True"
+            if first_use_subprocess
+            else "Windows UC attempt-1 use_subprocess=False"
+        )
+        push_attempt(first_label, first_use_subprocess, chrome_major)
         if retry_enabled:
-            push_attempt("Windows UC attempt-2 use_subprocess=False", False, chrome_major)
+            second_use_subprocess = not first_use_subprocess
+            second_label = (
+                "Windows UC attempt-2 use_subprocess=True"
+                if second_use_subprocess
+                else "Windows UC attempt-2 use_subprocess=False"
+            )
+            push_attempt(second_label, second_use_subprocess, chrome_major)
             push_attempt("Windows UC attempt-3 tanpa version_main", True, 0)
             push_attempt("Windows UC attempt-4 tanpa version_main + use_subprocess=False", False, 0)
 
@@ -1013,6 +1026,57 @@ def has_active_gmail_session(driver_d):
     return False
 
 
+def is_driver_alive(driver_d):
+    try:
+        _ = driver_d.current_url
+        driver_d.execute_script("return document.readyState")
+        return True
+    except Exception:
+        return False
+
+
+def is_session_lost_error(exc):
+    text = (str(exc) or "").lower()
+    markers = (
+        "invalid session id",
+        "no such window",
+        "target window already closed",
+        "disconnected",
+        "session deleted",
+        "chrome not reachable",
+    )
+    return any(m in text for m in markers)
+
+
+def ensure_gmail_inbox_ready(driver_d, data_xpath, timeout=35):
+    inbox_url = "https://mail.google.com/mail/u/0/#inbox"
+    deadline = time.time() + max(8, int(timeout))
+    last_err = None
+    while time.time() < deadline:
+        try:
+            if not has_active_gmail_session(driver_d):
+                driver_d.get(inbox_url)
+                sleep(1.5)
+
+            inbox_btn_xpath = data_xpath.get("inbox_button")
+            top_list_xpath = data_xpath.get("top_mail_list")
+
+            if inbox_btn_xpath:
+                element_presence(By.XPATH, inbox_btn_xpath, 20, driver_d)
+            if top_list_xpath:
+                element_presence(By.XPATH, top_list_xpath, 20, driver_d)
+            return True
+        except Exception as exc:
+            last_err = exc
+            try:
+                driver_d.get(inbox_url)
+            except Exception:
+                pass
+            sleep(2)
+    print("[WARN] Inbox Gmail belum siap:", last_err)
+    return False
+
+
 def run():
     # proxy kamu gak dipakai, jadi diabaikan
     driver_d = make_driver()
@@ -1036,8 +1100,21 @@ def run():
         wait_manual_gmail_login(driver_d)
 
     while True:
-        data_xpath = get_data_xpath()
         try:
+            if not is_driver_alive(driver_d):
+                print("[WARN] Session browser terputus, inisialisasi ulang driver...")
+                try:
+                    driver_d.quit()
+                except Exception:
+                    pass
+                driver_d = make_driver()
+
+            data_xpath = get_data_xpath()
+            if not ensure_gmail_inbox_ready(driver_d, data_xpath, timeout=35):
+                print("[WARN] Inbox belum siap, minta login manual ulang.")
+                wait_manual_gmail_login(driver_d)
+                continue
+
             # scroll to top
             try:
                 driver_d.execute_script(
@@ -1136,6 +1213,17 @@ def run():
         except Exception as e:
             print("error ni")
             print(e)
+            if is_session_lost_error(e):
+                print("[WARN] Sesi browser hilang, re-init driver...")
+                try:
+                    driver_d.quit()
+                except Exception:
+                    pass
+                driver_d = make_driver()
+                if has_active_gmail_session(driver_d):
+                    print("[INFO] Sesi Gmail aktif setelah re-init.")
+                else:
+                    wait_manual_gmail_login(driver_d)
             sleep(2)
 
 

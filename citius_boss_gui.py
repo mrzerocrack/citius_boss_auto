@@ -306,6 +306,9 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Script tidak ditemukan: {spec.script_path}")
             return
 
+        if spec.key == "acrea":
+            self._kill_acrea_stale_profile_processes(spec.key)
+
         proc = QProcess(self)
         proc.setWorkingDirectory(str(spec.folder))
         proc.setProgram(self.python_exec)
@@ -328,9 +331,43 @@ class MainWindow(QMainWindow):
         env.insert("CHROME_WINDOWS_UC", "1")
         env.insert("CHROME_WINDOWS_UC_RETRY", "1")
         env.insert("CHROME_WINDOWS_UC_FALLBACK_NATIVE", "1")
+        env.insert("CHROME_WINDOWS_UC_NO_SUBPROCESS_FIRST", "1")
         env.insert("CHROME_USER_DATA_DIR", self.attach_user_data_dir)
         env.insert("CHROME_PROFILE_DIR", "Default")
         env.insert("CHROME_CLONE_PROFILE", "0")
+
+    def _kill_acrea_stale_profile_processes(self, key: str) -> None:
+        if psutil is None:
+            return
+        marker = str(Path(self.attach_user_data_dir)).strip()
+        if not marker:
+            return
+        marker_norm = marker.replace("\\", "/").lower()
+        killed = 0
+        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+            try:
+                pid = int(proc.info.get("pid") or 0)
+                if pid <= 0:
+                    continue
+                name = (proc.info.get("name") or "").lower()
+                cmdline = " ".join(proc.info.get("cmdline") or "")
+                cmdline_norm = cmdline.replace("\\", "/").lower()
+                is_browser = (
+                    "chrome" in name
+                    or "chromium" in name
+                    or "chrome" in cmdline_norm
+                    or "chromium" in cmdline_norm
+                )
+                if not is_browser:
+                    continue
+                if marker_norm not in cmdline_norm:
+                    continue
+                proc.kill()
+                killed += 1
+            except Exception:
+                continue
+        if killed > 0:
+            self._append_log(key, f"[STOP] cleanup stale acrea chrome by profile: {killed} process")
 
     def _read_stdout(self, key: str) -> None:
         rt = self.modules[key]
@@ -362,6 +399,8 @@ class MainWindow(QMainWindow):
         rt = self.modules[key]
         proc = rt.process
         if not proc or proc.state() == QProcess.ProcessState.NotRunning:
+            if key == "acrea":
+                self._kill_acrea_stale_profile_processes(key)
             return
         pid = int(proc.processId())
         self._append_log(key, f"[STOP] terminate requested pid={pid}")
@@ -369,6 +408,8 @@ class MainWindow(QMainWindow):
         # Paksa matikan process tree (python + chromedriver + chrome UC) agar tidak nyangkut.
         if pid > 0 and psutil is not None:
             self._kill_process_tree(key, pid)
+            if key == "acrea":
+                self._kill_acrea_stale_profile_processes(key)
             # Tunggu signal finished dari QProcess sebentar.
             proc.waitForFinished(3000)
             return
@@ -379,6 +420,8 @@ class MainWindow(QMainWindow):
             self._append_log(key, "[STOP] kill forced (fallback)")
             proc.kill()
             proc.waitForFinished(3000)
+        if key == "acrea":
+            self._kill_acrea_stale_profile_processes(key)
 
     def _kill_process_tree(self, key: str, root_pid: int) -> None:
         if psutil is None:
