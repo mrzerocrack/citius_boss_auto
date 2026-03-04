@@ -5,6 +5,8 @@ import datetime
 import re
 import time
 import socket
+import tempfile
+import atexit
 from time import sleep, strftime
 import random
 import secrets
@@ -27,6 +29,28 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+
+TEMP_PROFILE_DIRS = []
+
+
+def _cleanup_temp_profiles():
+    for path in TEMP_PROFILE_DIRS:
+        try:
+            shutil.rmtree(path, ignore_errors=True)
+        except Exception:
+            pass
+
+
+atexit.register(_cleanup_temp_profiles)
+
+
+def env_truthy(name, default="0"):
+    value = os.environ.get(name, default)
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def use_existing_chrome_attach_mode():
+    return env_truthy("CHROME_ATTACH_EXISTING", "0")
 
 
 # =========================
@@ -154,6 +178,66 @@ def detect_chrome_major(chrome_bin):
     return 0
 
 
+def resolve_linux_chrome_profile():
+    """Return (user_data_dir, profile_directory) for Linux Chrome profile."""
+    env_user_data = (os.environ.get("CHROME_USER_DATA_DIR") or "").strip()
+    env_profile_dir = (os.environ.get("CHROME_PROFILE_DIR") or "").strip()
+    env_profile_path = (os.environ.get("CHROME_PROFILE_PATH") or "").strip()
+
+    # CHROME_PROFILE_PATH can be either full profile path or user-data-dir.
+    if env_profile_path:
+        if os.path.isdir(env_profile_path):
+            base = os.path.basename(env_profile_path.rstrip("/"))
+            if base == "Default" or base.startswith("Profile "):
+                return os.path.dirname(env_profile_path), base
+            return env_profile_path, env_profile_dir
+
+    if env_user_data and os.path.isdir(env_user_data):
+        return env_user_data, env_profile_dir
+
+    home = os.path.expanduser("~")
+    candidates = [
+        os.path.join(home, ".config", "google-chrome"),
+        os.path.join(home, ".config", "google-chrome-stable"),
+        os.path.join(home, ".config", "chromium"),
+    ]
+    for base in candidates:
+        if os.path.isdir(base):
+            return base, env_profile_dir
+    return "", env_profile_dir
+
+
+def clone_linux_profile(user_data_dir, profile_dir):
+    if not user_data_dir or not os.path.isdir(user_data_dir):
+        return user_data_dir, profile_dir
+    temp_root = tempfile.mkdtemp(prefix="citius_uc_profile_")
+    TEMP_PROFILE_DIRS.append(temp_root)
+
+    # File penting global state browser.
+    for filename in ("Local State",):
+        src = os.path.join(user_data_dir, filename)
+        dst = os.path.join(temp_root, filename)
+        if os.path.isfile(src):
+            try:
+                shutil.copy2(src, dst)
+            except Exception:
+                pass
+
+    # Tentukan folder profile sumber.
+    source_profile = profile_dir or "Default"
+    src_profile_path = os.path.join(user_data_dir, source_profile)
+    if not os.path.isdir(src_profile_path):
+        source_profile = "Default"
+        src_profile_path = os.path.join(user_data_dir, source_profile)
+    if not os.path.isdir(src_profile_path):
+        # Tidak ada profile valid, balik ke aslinya.
+        return user_data_dir, profile_dir
+
+    dst_profile_path = os.path.join(temp_root, source_profile)
+    shutil.copytree(src_profile_path, dst_profile_path, dirs_exist_ok=True)
+    return temp_root, source_profile
+
+
 def find_free_port():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind(("127.0.0.1", 0))
@@ -177,6 +261,129 @@ def wait_devtools_ready(port, timeout=35):
     return False
 
 
+def _parse_remote_debug_port(cmdline):
+    for arg in cmdline or []:
+        if not isinstance(arg, str):
+            continue
+        if arg.startswith("--remote-debugging-port="):
+            raw = arg.split("=", 1)[1].strip()
+            try:
+                port = int(raw)
+            except Exception:
+                continue
+            if 1 <= port <= 65535:
+                return port
+    return 0
+
+
+def discover_chrome_debug_ports():
+    ports = set()
+    for proc in psutil.process_iter(["name", "cmdline"]):
+        try:
+            name = (proc.info.get("name") or "").lower()
+            cmdline = proc.info.get("cmdline") or []
+            cmdline_text = " ".join(cmdline).lower()
+            if not (
+                "chrome" in name
+                or "chromium" in name
+                or "google-chrome" in cmdline_text
+                or "chromium" in cmdline_text
+            ):
+                continue
+            port = _parse_remote_debug_port(cmdline)
+            if port:
+                ports.add(port)
+        except Exception:
+            continue
+    return sorted(ports)
+
+
+def get_devtools_tab_urls(port):
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/list", timeout=1.5) as resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+        if not isinstance(payload, list):
+            return []
+        urls = []
+        for item in payload:
+            if isinstance(item, dict):
+                url = (item.get("url") or "").strip()
+                if url:
+                    urls.append(url)
+        return urls
+    except Exception:
+        return []
+
+
+def find_existing_chrome_debug_port(target_url="", timeout=180):
+    target = (target_url or "").strip().lower()
+    timeout = max(5, int(timeout))
+    deadline = time.time() + timeout
+    last_ports = None
+
+    while time.time() < deadline:
+        ports = discover_chrome_debug_ports()
+        if ports and ports != last_ports:
+            print("[INFO] Kandidat remote-debugging port:", ",".join(str(p) for p in ports))
+            last_ports = ports
+
+        for port in ports:
+            tab_urls = get_devtools_tab_urls(port)
+            if not tab_urls:
+                continue
+            if not target:
+                print(f"[INFO] Port attach ditemukan: {port}")
+                return port
+            for tab_url in tab_urls:
+                if target in tab_url.lower():
+                    print(f"[INFO] Target URL match di port {port}: {tab_url}")
+                    return port
+        sleep(1)
+
+    return 0
+
+
+def make_driver_attach_existing(chrome_bin):
+    debug_port_env = (os.environ.get("CHROME_DEBUG_PORT") or "").strip()
+    target_url = (os.environ.get("CHROME_ATTACH_TARGET_URL") or "mail.google.com").strip()
+    timeout = (os.environ.get("CHROME_ATTACH_TIMEOUT") or "180").strip()
+    try:
+        timeout_sec = int(timeout)
+    except Exception:
+        timeout_sec = 180
+
+    debug_port = 0
+    if debug_port_env:
+        try:
+            debug_port = int(debug_port_env)
+        except Exception:
+            raise RuntimeError(f"CHROME_DEBUG_PORT tidak valid: {debug_port_env}") from None
+
+    if debug_port <= 0:
+        print(f"[INFO] Cari Chrome existing untuk attach, target URL: {target_url}")
+        debug_port = find_existing_chrome_debug_port(target_url=target_url, timeout=timeout_sec)
+        if debug_port <= 0:
+            raise RuntimeError(
+                "Tidak menemukan Chrome yang bisa di-attach. "
+                "Jalankan Chrome manual pakai --remote-debugging-port=<port> "
+                "dan buka URL target dulu."
+            )
+
+    if not wait_devtools_ready(debug_port, timeout=15):
+        raise RuntimeError(
+            f"DevTools port {debug_port} tidak siap untuk attach. "
+            "Jika pakai Chrome terbaru, jangan gunakan user-data-dir default; "
+            "pakai user-data-dir khusus untuk mode remote debugging."
+        )
+
+    attach_options = webdriver.ChromeOptions()
+    if chrome_bin:
+        attach_options.binary_location = chrome_bin
+    attach_options.add_experimental_option("debuggerAddress", f"127.0.0.1:{debug_port}")
+    print(f"[INFO] Attach ke Chrome existing, port={debug_port}")
+    return webdriver.Chrome(options=attach_options)
+
+
 def kill_windows_chrome_processes():
     if os.name != "nt":
         return
@@ -189,6 +396,47 @@ def kill_windows_chrome_processes():
         except Exception:
             pass
     sleep(1)
+
+
+def kill_linux_chrome_processes():
+    if os.name == "nt":
+        return
+    killed = 0
+    # 1) Coba kill via psutil agar tidak bergantung nama executable tertentu.
+    try:
+        me = os.getpid()
+        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+            try:
+                pid = int(proc.info.get("pid") or 0)
+                if pid <= 0 or pid == me:
+                    continue
+                name = (proc.info.get("name") or "").lower()
+                cmdline = " ".join(proc.info.get("cmdline") or []).lower()
+                is_target = any(token in name for token in ("chrome", "chromedriver", "chromium")) or any(
+                    token in cmdline for token in ("google-chrome", "chromedriver", "chromium", "/chrome")
+                )
+                if not is_target:
+                    continue
+                proc.kill()
+                killed += 1
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    # 2) Fallback tambahan pakai pkill.
+    for cmd in (
+        ["pkill", "-f", "google-chrome"],
+        ["pkill", "-f", "chrome"],
+        ["pkill", "-f", "chromium"],
+        ["pkill", "-f", "chromedriver"],
+    ):
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, check=False)
+        except Exception:
+            pass
+    sleep(1)
+    print(f"[INFO] kill_linux_chrome_processes selesai, target psutil killed={killed}")
 
 
 def make_driver_windows_attach(chrome_bin, user_data_dir=""):
@@ -355,11 +603,6 @@ def login(driver_d, data_xpath):
 
 
 def make_driver():
-    chrome_options = webdriver.ChromeOptions()
-    chrome_options.add_argument("--no-first-run")
-    chrome_options.add_argument("--no-default-browser-check")
-    chrome_options.add_argument("--disable-popup-blocking")
-
     chrome_bin = resolve_chrome_binary()
     chrome_major = detect_chrome_major(chrome_bin)
     if chrome_major > 0:
@@ -367,20 +610,124 @@ def make_driver():
     else:
         print("AUTO-DETECT CHROME MAJOR gagal; binary:", chrome_bin or "(tidak ditemukan)")
 
+    if use_existing_chrome_attach_mode():
+        return make_driver_attach_existing(chrome_bin)
+
+    # Linux/Ubuntu: pakai UC + profile agar tidak lewat profile picker.
+    if os.name != "nt":
+        if uc is None:
+            raise RuntimeError("undetected-chromedriver belum terpasang. Install: pip install undetected-chromedriver")
+        user_data_dir, profile_dir = resolve_linux_chrome_profile()
+        if user_data_dir:
+            print("[INFO] Linux user-data-dir:", user_data_dir)
+        if profile_dir:
+            print("[INFO] Linux profile-directory:", profile_dir)
+
+        runtime_user_data = user_data_dir
+        runtime_profile_dir = profile_dir
+        if os.environ.get("CHROME_CLONE_PROFILE", "1").strip().lower() in {"1", "true", "yes"} and user_data_dir:
+            try:
+                runtime_user_data, runtime_profile_dir = clone_linux_profile(user_data_dir, profile_dir)
+                print("[INFO] Linux runtime cloned user-data-dir:", runtime_user_data)
+                if runtime_profile_dir:
+                    print("[INFO] Linux runtime cloned profile-directory:", runtime_profile_dir)
+            except Exception as exc:
+                print("[WARN] Gagal clone profile Linux, pakai profile asli:", exc)
+
+        if os.environ.get("KILL_CHROME_BEFORE_UC", "1").strip().lower() in {"1", "true", "yes"}:
+            print("[INFO] Menutup proses chrome/chromedriver lama sebelum UC launch...")
+            kill_linux_chrome_processes()
+
+        def build_linux_options():
+            opts = uc.ChromeOptions()
+            opts.add_argument("--no-first-run")
+            opts.add_argument("--no-default-browser-check")
+            opts.add_argument("--disable-popup-blocking")
+            opts.add_argument("--password-store=basic")
+            # Stabilitas Linux (WSL/container/VM)
+            opts.add_argument("--disable-dev-shm-usage")
+            opts.add_argument("--no-sandbox")
+            opts.add_argument("--disable-gpu")
+            opts.add_argument("--remote-allow-origins=*")
+            opts.add_argument("--disable-background-networking")
+            if chrome_bin:
+                opts.binary_location = chrome_bin
+            if runtime_profile_dir:
+                opts.add_argument(f"--profile-directory={runtime_profile_dir}")
+            return opts
+
+        base_kwargs = {"options": build_linux_options()}
+        if chrome_bin:
+            base_kwargs["browser_executable_path"] = chrome_bin
+        if runtime_user_data:
+            # Gunakan parameter resmi UC agar manajemen profile lebih stabil.
+            base_kwargs["user_data_dir"] = runtime_user_data
+        if chrome_major > 0:
+            base_kwargs["version_main"] = chrome_major
+
+        attempt_plan = [
+            ("UC attempt-1 use_subprocess=True", {"use_subprocess": True, "drop_version_main": False}),
+            ("UC attempt-2 use_subprocess=False", {"use_subprocess": False, "drop_version_main": False}),
+            ("UC attempt-3 tanpa version_main", {"use_subprocess": True, "drop_version_main": True}),
+        ]
+        last_exc = None
+        for idx, (label, conf) in enumerate(attempt_plan, start=1):
+            kwargs = dict(base_kwargs)
+            kwargs["options"] = build_linux_options()
+            kwargs["use_subprocess"] = conf["use_subprocess"]
+            if conf["drop_version_main"]:
+                kwargs.pop("version_main", None)
+            try:
+                print(f"[INFO] {label}")
+                return uc.Chrome(**kwargs)
+            except Exception as exc:
+                last_exc = exc
+                print(f"[WARN] {label} gagal: {exc}")
+                if idx < len(attempt_plan):
+                    if os.environ.get("KILL_CHROME_BEFORE_UC_RETRY", "1").strip().lower() in {"1", "true", "yes"}:
+                        print("[INFO] Menutup proses chrome/chromedriver lama sebelum retry...")
+                        kill_linux_chrome_processes()
+
+        # Last resort: native Selenium Chrome dengan profile yang sama.
+        print("[WARN] Semua percobaan UC gagal, fallback ke Selenium native.")
+        native_opts = webdriver.ChromeOptions()
+        native_opts.add_argument("--no-first-run")
+        native_opts.add_argument("--no-default-browser-check")
+        native_opts.add_argument("--disable-popup-blocking")
+        native_opts.add_argument("--disable-dev-shm-usage")
+        native_opts.add_argument("--no-sandbox")
+        native_opts.add_argument("--disable-gpu")
+        if chrome_bin:
+            native_opts.binary_location = chrome_bin
+        if runtime_user_data:
+            native_opts.add_argument(f"--user-data-dir={runtime_user_data}")
+        if runtime_profile_dir:
+            native_opts.add_argument(f"--profile-directory={runtime_profile_dir}")
+        try:
+            return webdriver.Chrome(options=native_opts)
+        except Exception:
+            if last_exc is not None:
+                raise last_exc
+            raise
+
+    # Windows tetap pakai selenium native + fallback attach.
+    chrome_options = webdriver.ChromeOptions()
+    chrome_options.add_argument("--no-first-run")
+    chrome_options.add_argument("--no-default-browser-check")
+    chrome_options.add_argument("--disable-popup-blocking")
+
     if chrome_bin:
         chrome_options.binary_location = chrome_bin
 
-    # Pakai profile asli Windows agar pilihan profile muncul sesuai browser harian.
     user_data_dir = ""
-    if os.name == "nt":
-        local_app_data = os.environ.get("LOCALAPPDATA", "")
-        default_user_data = (
-            os.path.join(local_app_data, "Google", "Chrome", "User Data") if local_app_data else ""
-        )
-        user_data_dir = (os.environ.get("CHROME_USER_DATA_DIR") or default_user_data).strip()
-        if user_data_dir and os.path.isdir(user_data_dir):
-            chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
-            print("[INFO] Chrome user-data-dir:", user_data_dir)
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
+    default_user_data = (
+        os.path.join(local_app_data, "Google", "Chrome", "User Data") if local_app_data else ""
+    )
+    user_data_dir = (os.environ.get("CHROME_USER_DATA_DIR") or default_user_data).strip()
+    if user_data_dir and os.path.isdir(user_data_dir):
+        chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
+        print("[INFO] Chrome user-data-dir:", user_data_dir)
 
     try:
         driver = webdriver.Chrome(options=chrome_options)
@@ -390,7 +737,7 @@ def make_driver():
             raise RuntimeError(
                 "Chrome profile sedang dipakai proses lain. Tutup semua Chrome lalu jalankan ulang."
             ) from exc
-        if os.name == "nt" and "devtoolsactiveport file doesn't exist" in msg:
+        if "devtoolsactiveport file doesn't exist" in msg:
             print("[WARN] Native ChromeDriver gagal (DevToolsActivePort). Coba fallback attach mode.")
             if os.environ.get("KILL_CHROME_BEFORE_ATTACH", "1").strip().lower() in {"1", "true", "yes"}:
                 print("[INFO] Menutup proses Chrome/ChromeDriver lama sebelum attach...")
@@ -465,22 +812,53 @@ def wait_for_windows_profile_selection(driver_d):
     return True
 
 
+def has_active_gmail_session(driver_d):
+    inbox_url = "https://mail.google.com/mail/u/0/#inbox"
+
+    def _is_logged_url():
+        try:
+            current = (driver_d.current_url or "").lower()
+        except Exception:
+            return False
+        return ("mail.google.com" in current) and ("accounts.google.com" not in current)
+
+    if _is_logged_url():
+        return True
+
+    try:
+        driver_d.get(inbox_url)
+    except Exception:
+        return False
+
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        if _is_logged_url():
+            return True
+        sleep(1)
+    return False
+
+
 def run():
     # proxy kamu gak dipakai, jadi diabaikan
     driver_d = make_driver()
-    session_ok = wait_for_windows_profile_selection(driver_d)
-    if not session_ok:
-        print("[INFO] Re-init driver setelah profile picker.")
-        try:
-            driver_d.quit()
-        except Exception:
-            pass
-        driver_d = make_driver()
-
-    driver_d.get("https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Fmail.google.com%2Fmail%2F&dsh=S-1238628894%3A1769658398148796&ifkv=AXbMIuCW7KLzC_Q8mlpZpr6v_D4HrrIY3tiSN98tJOblxewSwhjwofLkDRONKYNNaEXG-imVAlkN&rip=1&sacu=1&service=mail&flowName=GlifWebSignIn&flowEntry=ServiceLogin")
+    if os.name == "nt" and not use_existing_chrome_attach_mode():
+        session_ok = wait_for_windows_profile_selection(driver_d)
+        if not session_ok:
+            print("[INFO] Re-init driver setelah profile picker.")
+            try:
+                driver_d.quit()
+            except Exception:
+                pass
+            driver_d = make_driver()
 
     data_xpath = get_data_xpath()
-    login(driver_d, data_xpath)
+    if has_active_gmail_session(driver_d):
+        print("[INFO] Sesi Gmail aktif, lewati login form.")
+    else:
+        driver_d.get(
+            "https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Fmail.google.com%2Fmail%2F&dsh=S-1238628894%3A1769658398148796&ifkv=AXbMIuCW7KLzC_Q8mlpZpr6v_D4HrrIY3tiSN98tJOblxewSwhjwofLkDRONKYNNaEXG-imVAlkN&rip=1&sacu=1&service=mail&flowName=GlifWebSignIn&flowEntry=ServiceLogin"
+        )
+        login(driver_d, data_xpath)
 
     while True:
         data_xpath = get_data_xpath()

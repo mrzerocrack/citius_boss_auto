@@ -8,10 +8,14 @@ import os
 import shutil
 import sys
 import subprocess
+import secrets
+import threading
 from dataclasses import dataclass
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Dict, List, Optional
 import signal
+from urllib.parse import urlparse
 
 try:
     import psutil
@@ -19,7 +23,7 @@ except Exception:
     psutil = None  # type: ignore
 
 try:
-    from PySide6.QtCore import QProcess, Qt, QUrl
+    from PySide6.QtCore import QProcess, QProcessEnvironment, Qt, QUrl
     from PySide6.QtGui import QDesktopServices
     from PySide6.QtWidgets import (
         QApplication,
@@ -137,6 +141,101 @@ class ModuleRuntime:
         self.log_widget: Optional[QPlainTextEdit] = None
 
 
+class AttachMarkerServer:
+    def __init__(self, host: str = "127.0.0.1", preferred_port: int = 18765) -> None:
+        self.host = host
+        self.preferred_port = int(preferred_port)
+        self.token = secrets.token_urlsafe(12)
+        self.marker_path = f"/citius-attach/{self.token}"
+        self.port: int = 0
+        self._httpd: Optional[ThreadingHTTPServer] = None
+        self._thread: Optional[threading.Thread] = None
+
+    @property
+    def marker_url(self) -> str:
+        if self.port <= 0:
+            return ""
+        return f"http://{self.host}:{self.port}{self.marker_path}"
+
+    @property
+    def is_running(self) -> bool:
+        return self._httpd is not None and self.port > 0
+
+    def start(self) -> None:
+        marker_path = self.marker_path
+        marker_token = self.token
+
+        class _Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                parsed = urlparse(self.path)
+                if parsed.path == "/health":
+                    payload = b'{"ok":true}'
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Length", str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+                    return
+
+                if parsed.path == marker_path:
+                    body = f"""<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Citius Attach Marker</title></head>
+<body style="font-family:sans-serif;line-height:1.5;padding:24px">
+<h2>Citius Attach Marker</h2>
+<p>Tab ini dipakai untuk identifikasi browser yang akan di-attach Selenium.</p>
+<p><b>Token:</b> {marker_token}</p>
+</body>
+</html>""".encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+
+                payload = b"Not Found"
+                self.send_response(404)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def log_message(self, fmt: str, *args) -> None:  # noqa: A003
+                return
+
+        last_error: Optional[Exception] = None
+        for port in (self.preferred_port, 0):
+            try:
+                self._httpd = ThreadingHTTPServer((self.host, port), _Handler)
+                self.port = int(self._httpd.server_address[1])
+                break
+            except Exception as exc:
+                last_error = exc
+                self._httpd = None
+                self.port = 0
+
+        if not self._httpd or self.port <= 0:
+            raise RuntimeError(f"Gagal start attach marker server: {last_error}")
+
+        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        if not self._httpd:
+            return
+        try:
+            self._httpd.shutdown()
+        except Exception:
+            pass
+        try:
+            self._httpd.server_close()
+        except Exception:
+            pass
+        self._httpd = None
+        self.port = 0
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -145,8 +244,13 @@ class MainWindow(QMainWindow):
 
         self.modules: Dict[str, ModuleRuntime] = {m.key: ModuleRuntime(m) for m in MODULES}
         self.python_exec = sys.executable or "python"
+        self.attach_server: Optional[AttachMarkerServer] = None
+        self.attach_marker_url: str = ""
+        self.attach_debug_port: int = int(os.environ.get("CITIUS_ATTACH_DEBUG_PORT", "9222"))
+        self.attach_user_data_dir: str = self._default_attach_user_data_dir()
 
         self._build_ui()
+        self._start_attach_marker_server()
         self._refresh_table()
 
     def _build_ui(self) -> None:
@@ -161,6 +265,23 @@ class MainWindow(QMainWindow):
         top.addWidget(self.python_label, 1)
         top.addWidget(btn_pick_python)
         layout.addLayout(top)
+
+        attach_row = QHBoxLayout()
+        self.attach_label = QLabel("Attach Marker: (belum aktif)")
+        self.btn_copy_attach = QPushButton("Copy Attach URL")
+        self.btn_open_attach = QPushButton("Buka Attach URL")
+        self.btn_open_attach_browser = QPushButton("Buka Browser Attach")
+        self.btn_copy_attach.clicked.connect(self._copy_attach_url)
+        self.btn_open_attach.clicked.connect(self._open_attach_url)
+        self.btn_open_attach_browser.clicked.connect(self._open_attach_browser)
+        self.btn_copy_attach.setEnabled(False)
+        self.btn_open_attach.setEnabled(False)
+        self.btn_open_attach_browser.setEnabled(False)
+        attach_row.addWidget(self.attach_label, 1)
+        attach_row.addWidget(self.btn_copy_attach)
+        attach_row.addWidget(self.btn_open_attach)
+        attach_row.addWidget(self.btn_open_attach_browser)
+        layout.addLayout(attach_row)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         layout.addWidget(splitter, 1)
@@ -250,6 +371,134 @@ class MainWindow(QMainWindow):
             self.table.setItem(row, 3, QTableWidgetItem(str(spec.folder)))
         self.table.resizeColumnsToContents()
 
+    def _start_attach_marker_server(self) -> None:
+        server = AttachMarkerServer()
+        try:
+            server.start()
+        except Exception as exc:
+            self.attach_server = None
+            self.attach_marker_url = ""
+            self.attach_label.setText(f"Attach Marker: gagal start ({exc})")
+            self.btn_copy_attach.setEnabled(False)
+            self.btn_open_attach.setEnabled(False)
+            self.btn_open_attach_browser.setEnabled(False)
+            return
+
+        self.attach_server = server
+        self.attach_marker_url = server.marker_url
+        self.attach_label.setText(f"Attach Marker: {self.attach_marker_url}")
+        self.btn_copy_attach.setEnabled(True)
+        self.btn_open_attach.setEnabled(True)
+        self.btn_open_attach_browser.setEnabled(True)
+
+    def _copy_attach_url(self) -> None:
+        if not self.attach_marker_url:
+            return
+        QApplication.clipboard().setText(self.attach_marker_url)
+
+    def _open_attach_url(self) -> None:
+        if not self.attach_marker_url:
+            return
+        QDesktopServices.openUrl(QUrl(self.attach_marker_url))
+
+    def _default_attach_user_data_dir(self) -> str:
+        if os.name == "nt":
+            base = os.environ.get("LOCALAPPDATA") or str(ROOT_DIR)
+            return str(Path(base) / "CitiusBossAuto" / "attach_profile")
+        if sys.platform == "darwin":
+            return str(Path.home() / "Library" / "Application Support" / "CitiusBossAuto" / "attach_profile")
+        return str(Path.home() / ".cache" / "citius_attach_profile")
+
+    def _resolve_chrome_binary(self) -> str:
+        env_bin = (os.environ.get("CHROME_BINARY") or "").strip()
+        if env_bin and Path(env_bin).exists():
+            return env_bin
+
+        candidates: List[str] = []
+        if os.name == "nt":
+            local_app_data = os.environ.get("LOCALAPPDATA", "")
+            program_files = os.environ.get("PROGRAMFILES", r"C:\Program Files")
+            program_w6432 = os.environ.get("ProgramW6432", r"C:\Program Files")
+            program_files_x86 = os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
+            candidates.extend(
+                [
+                    shutil.which("chrome.exe") or "",
+                    shutil.which("chrome") or "",
+                    os.path.join(local_app_data, "Google", "Chrome", "Application", "chrome.exe")
+                    if local_app_data
+                    else "",
+                    os.path.join(program_files, "Google", "Chrome", "Application", "chrome.exe"),
+                    os.path.join(program_w6432, "Google", "Chrome", "Application", "chrome.exe"),
+                    os.path.join(program_files_x86, "Google", "Chrome", "Application", "chrome.exe"),
+                ]
+            )
+        elif sys.platform == "darwin":
+            candidates.extend(
+                [
+                    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+                ]
+            )
+        else:
+            candidates.extend(
+                [
+                    shutil.which("google-chrome") or "",
+                    shutil.which("google-chrome-stable") or "",
+                    "/opt/google/chrome/chrome",
+                    shutil.which("chromium-browser") or "",
+                    shutil.which("chromium") or "",
+                ]
+            )
+
+        for path in candidates:
+            if path and Path(path).exists():
+                return path
+        return ""
+
+    def _open_attach_browser(self) -> None:
+        if not self.attach_marker_url:
+            QMessageBox.critical(self, "Attach Marker", "Attach marker URL belum aktif.")
+            return
+
+        chrome_bin = self._resolve_chrome_binary()
+        if not chrome_bin:
+            QMessageBox.critical(
+                self,
+                "Chrome Tidak Ditemukan",
+                "Chrome binary tidak ditemukan. Set env CHROME_BINARY atau install Google Chrome.",
+            )
+            return
+
+        profile_dir = Path(self.attach_user_data_dir)
+        try:
+            profile_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            QMessageBox.critical(self, "Gagal Siapkan Profile", f"Gagal membuat profile attach:\n{exc}")
+            return
+
+        args = [
+            chrome_bin,
+            f"--remote-debugging-port={self.attach_debug_port}",
+            f"--user-data-dir={str(profile_dir)}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            self.attach_marker_url,
+        ]
+        try:
+            subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as exc:
+            QMessageBox.critical(self, "Gagal Buka Browser Attach", f"{exc}")
+            return
+
+        QMessageBox.information(
+            self,
+            "Browser Attach Dibuka",
+            "Browser attach-ready sudah dibuka.\n"
+            f"Port: {self.attach_debug_port}\n"
+            f"Profile: {profile_dir}\n\n"
+            "Silakan login Gmail di browser tersebut (sekali saja), lalu jalankan modul ACREA.",
+        )
+
     def _current_spec(self) -> Optional[ModuleSpec]:
         row = self.table.currentRow()
         if row < 0:
@@ -301,13 +550,35 @@ class MainWindow(QMainWindow):
         proc.setWorkingDirectory(str(spec.folder))
         proc.setProgram(self.python_exec)
         proc.setArguments(["-u", spec.script])
+        env = QProcessEnvironment.systemEnvironment()
+        self._inject_module_env(spec, env)
+        proc.setProcessEnvironment(env)
         proc.readyReadStandardOutput.connect(lambda k=spec.key: self._read_stdout(k))
         proc.readyReadStandardError.connect(lambda k=spec.key: self._read_stderr(k))
         proc.started.connect(lambda k=spec.key: self._set_status(k, "Running"))
         proc.finished.connect(lambda code, status, k=spec.key: self._on_finished(k, code, status))
         rt.process = proc
         self._append_log(spec.key, f"[START] cwd={spec.folder} cmd={self.python_exec} -u {spec.script}")
+        if spec.key == "acrea" and self.attach_marker_url:
+            self._append_log(spec.key, f"[INFO] Attach marker URL: {self.attach_marker_url}")
+            self._append_log(
+                spec.key,
+                "[INFO] Buka Chrome manual dengan --remote-debugging-port=<port> "
+                "lalu buka URL marker di profil yang mau dipakai.",
+            )
         proc.start()
+
+    def _inject_module_env(self, spec: ModuleSpec, env: QProcessEnvironment) -> None:
+        if spec.key != "acrea":
+            return
+        if not self.attach_marker_url:
+            return
+        env.insert("CHROME_ATTACH_EXISTING", "1")
+        env.insert("CHROME_ATTACH_TARGET_URL", self.attach_marker_url)
+        env.insert("CHROME_DEBUG_PORT", str(self.attach_debug_port))
+        # Default timeout lebih panjang karena attach menunggu user buka tab marker.
+        if not env.contains("CHROME_ATTACH_TIMEOUT"):
+            env.insert("CHROME_ATTACH_TIMEOUT", "300")
 
     def _read_stdout(self, key: str) -> None:
         rt = self.modules[key]
@@ -562,6 +833,8 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         self._stop_all()
+        if self.attach_server:
+            self.attach_server.stop()
         super().closeEvent(event)
 
 
