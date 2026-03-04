@@ -326,6 +326,8 @@ class MainWindow(QMainWindow):
             return
         env.insert("CHROME_ATTACH_EXISTING", "0")
         env.insert("CHROME_WINDOWS_UC", "1")
+        env.insert("CHROME_WINDOWS_UC_RETRY", "1")
+        env.insert("CHROME_WINDOWS_UC_FALLBACK_NATIVE", "1")
         env.insert("CHROME_USER_DATA_DIR", self.attach_user_data_dir)
         env.insert("CHROME_PROFILE_DIR", "Default")
         env.insert("CHROME_CLONE_PROFILE", "0")

@@ -165,6 +165,16 @@ def detect_chrome_major(chrome_bin):
         return 0
 
     if os.name == "nt":
+        if win32api is not None:
+            try:
+                info = win32api.GetFileVersionInfo(chrome_bin, "\\")
+                ms = int(info.get("FileVersionMS", 0))
+                major = (ms >> 16) & 0xFFFF
+                if major > 0:
+                    return major
+            except Exception:
+                pass
+
         # Windows: baca versi executable langsung agar tidak memicu spawn Chrome.
         escaped = chrome_bin.replace("'", "''")
         ps = f"(Get-Item -LiteralPath '{escaped}').VersionInfo.ProductVersion"
@@ -190,6 +200,20 @@ def detect_chrome_major(chrome_bin):
     except Exception:
         pass
     return 0
+
+
+def extract_browser_major_from_error(exc):
+    try:
+        msg = str(exc)
+    except Exception:
+        return 0
+    m = re.search(r"Current browser version is\s+(\d+)\.", msg)
+    if not m:
+        return 0
+    try:
+        return int(m.group(1))
+    except Exception:
+        return 0
 
 
 def resolve_linux_chrome_profile():
@@ -773,16 +797,6 @@ def make_driver():
         if uc is None:
             raise RuntimeError("undetected-chromedriver belum terpasang. Install: pip install undetected-chromedriver")
 
-        uc_opts = uc.ChromeOptions()
-        uc_opts.add_argument("--no-first-run")
-        uc_opts.add_argument("--no-default-browser-check")
-        uc_opts.add_argument("--disable-popup-blocking")
-        uc_opts.add_argument("--password-store=basic")
-        uc_opts.add_argument("--remote-allow-origins=*")
-
-        if chrome_bin:
-            uc_opts.binary_location = chrome_bin
-
         local_app_data = os.environ.get("LOCALAPPDATA", "")
         default_user_data = (
             os.path.join(local_app_data, "CitiusBossAuto", "acrea_profile") if local_app_data else ""
@@ -794,28 +808,82 @@ def make_driver():
                 os.makedirs(user_data_dir, exist_ok=True)
             except Exception:
                 pass
-            uc_opts.add_argument(f"--user-data-dir={user_data_dir}")
             print("[INFO] Windows UC user-data-dir:", user_data_dir)
         if profile_dir:
-            uc_opts.add_argument(f"--profile-directory={profile_dir}")
             print("[INFO] Windows UC profile-directory:", profile_dir)
 
-        uc_kwargs = {"options": uc_opts, "use_subprocess": True}
-        if chrome_bin:
-            uc_kwargs["browser_executable_path"] = chrome_bin
-        if chrome_major > 0:
-            uc_kwargs["version_main"] = chrome_major
+        retry_enabled = env_truthy("CHROME_WINDOWS_UC_RETRY", "1")
+        fallback_native = env_truthy("CHROME_WINDOWS_UC_FALLBACK_NATIVE", "1")
+        print("[INFO] Windows UC mode aktif.")
 
-        try:
-            print("[INFO] Windows UC mode aktif.")
-            return uc.Chrome(**uc_kwargs)
-        except Exception as exc:
-            if env_truthy("CHROME_WINDOWS_UC_RETRY", "0"):
-                print("[WARN] Windows UC launch gagal, retry use_subprocess=False:", exc)
-                retry_kwargs = dict(uc_kwargs)
-                retry_kwargs["use_subprocess"] = False
-                return uc.Chrome(**retry_kwargs)
-            raise
+        def build_windows_uc_options():
+            opts = uc.ChromeOptions()
+            opts.add_argument("--no-first-run")
+            opts.add_argument("--no-default-browser-check")
+            opts.add_argument("--disable-popup-blocking")
+            opts.add_argument("--password-store=basic")
+            opts.add_argument("--remote-allow-origins=*")
+            if chrome_bin:
+                opts.binary_location = chrome_bin
+            if user_data_dir:
+                opts.add_argument(f"--user-data-dir={user_data_dir}")
+            if profile_dir:
+                opts.add_argument(f"--profile-directory={profile_dir}")
+            return opts
+
+        tried = set()
+        attempts = []
+
+        def push_attempt(label, use_subprocess, version_main):
+            key = (bool(use_subprocess), int(version_main or 0))
+            if key in tried:
+                return
+            tried.add(key)
+            attempts.append((label, bool(use_subprocess), int(version_main or 0)))
+
+        push_attempt("Windows UC attempt-1 use_subprocess=True", True, chrome_major)
+        if retry_enabled:
+            push_attempt("Windows UC attempt-2 use_subprocess=False", False, chrome_major)
+            push_attempt("Windows UC attempt-3 tanpa version_main", True, 0)
+            push_attempt("Windows UC attempt-4 tanpa version_main + use_subprocess=False", False, 0)
+
+        idx = 0
+        last_exc = None
+        while idx < len(attempts):
+            label, use_subprocess, version_main = attempts[idx]
+            idx += 1
+            kwargs = {
+                "options": build_windows_uc_options(),
+                "use_subprocess": use_subprocess,
+            }
+            if chrome_bin:
+                kwargs["browser_executable_path"] = chrome_bin
+            if version_main > 0:
+                kwargs["version_main"] = version_main
+            try:
+                print(f"[INFO] {label}")
+                return uc.Chrome(**kwargs)
+            except Exception as exc:
+                last_exc = exc
+                print(f"[WARN] {label} gagal: {exc}")
+                browser_major = extract_browser_major_from_error(exc)
+                if retry_enabled and browser_major > 0 and browser_major != version_main:
+                    push_attempt(
+                        f"Windows UC retry browser major={browser_major} use_subprocess=True",
+                        True,
+                        browser_major,
+                    )
+                    push_attempt(
+                        f"Windows UC retry browser major={browser_major} use_subprocess=False",
+                        False,
+                        browser_major,
+                    )
+
+        if not fallback_native:
+            if last_exc is not None:
+                raise last_exc
+            raise RuntimeError("Windows UC gagal membuat sesi browser.")
+        print("[WARN] Semua percobaan Windows UC gagal, fallback ke Selenium native.")
 
     # Windows native Selenium + fallback attach.
     chrome_options = webdriver.ChromeOptions()

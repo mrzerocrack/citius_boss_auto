@@ -346,11 +346,11 @@ def download(url):
 			with open(filename, "wb") as f:
 				f.write(resp.content)
 
-			print(f"✅ Tersimpan sebagai: {filename}")
+			print(f"[OK] Tersimpan sebagai: {filename}")
 			return filename
 
 		except Exception as e:
-			print("🔄 Ulang…", e)
+			print("[RETRY] Ulang...", e)
 			sleep(5)
 
 def shot_url(url):
