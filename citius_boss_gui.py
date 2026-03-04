@@ -8,12 +8,10 @@ import os
 import shutil
 import sys
 import subprocess
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 import signal
-import urllib.request
 
 try:
     import psutil
@@ -147,7 +145,6 @@ class MainWindow(QMainWindow):
 
         self.modules: Dict[str, ModuleRuntime] = {m.key: ModuleRuntime(m) for m in MODULES}
         self.python_exec = sys.executable or "python"
-        self.attach_debug_port: int = int(os.environ.get("CITIUS_ATTACH_DEBUG_PORT", "9222"))
         self.attach_user_data_dir: str = self._default_attach_user_data_dir()
 
         self._build_ui()
@@ -262,120 +259,6 @@ class MainWindow(QMainWindow):
             return str(Path.home() / "Library" / "Application Support" / "CitiusBossAuto" / "attach_profile")
         return str(Path.home() / ".cache" / "citius_attach_profile")
 
-    def _resolve_chrome_binary(self) -> str:
-        env_bin = (os.environ.get("CHROME_BINARY") or "").strip()
-        if env_bin and Path(env_bin).exists():
-            return env_bin
-
-        candidates: List[str] = []
-        if os.name == "nt":
-            local_app_data = os.environ.get("LOCALAPPDATA", "")
-            program_files = os.environ.get("PROGRAMFILES", r"C:\Program Files")
-            program_w6432 = os.environ.get("ProgramW6432", r"C:\Program Files")
-            program_files_x86 = os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
-            candidates.extend(
-                [
-                    shutil.which("chrome.exe") or "",
-                    shutil.which("chrome") or "",
-                    os.path.join(local_app_data, "Google", "Chrome", "Application", "chrome.exe")
-                    if local_app_data
-                    else "",
-                    os.path.join(program_files, "Google", "Chrome", "Application", "chrome.exe"),
-                    os.path.join(program_w6432, "Google", "Chrome", "Application", "chrome.exe"),
-                    os.path.join(program_files_x86, "Google", "Chrome", "Application", "chrome.exe"),
-                ]
-            )
-        elif sys.platform == "darwin":
-            candidates.extend(
-                [
-                    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-                    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-                ]
-            )
-        else:
-            candidates.extend(
-                [
-                    shutil.which("google-chrome") or "",
-                    shutil.which("google-chrome-stable") or "",
-                    "/opt/google/chrome/chrome",
-                    shutil.which("chromium-browser") or "",
-                    shutil.which("chromium") or "",
-                ]
-            )
-
-        for path in candidates:
-            if path and Path(path).exists():
-                return path
-        return ""
-
-    def _is_devtools_ready(self, port: int) -> bool:
-        try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=1.5) as resp:
-                payload = resp.read().decode("utf-8", errors="replace")
-            return "webSocketDebuggerUrl" in payload
-        except Exception:
-            return False
-
-    def _ensure_acrea_attach_browser(self, log_key: str) -> bool:
-        if self._is_devtools_ready(self.attach_debug_port):
-            self._append_log(
-                log_key,
-                f"[INFO] Browser attach ACREA sudah aktif di port {self.attach_debug_port}.",
-            )
-            return True
-
-        chrome_bin = self._resolve_chrome_binary()
-        if not chrome_bin:
-            self._append_log(log_key, "[ERR] Chrome binary tidak ditemukan.")
-            QMessageBox.critical(self, "Chrome Tidak Ditemukan", "Chrome binary tidak ditemukan.")
-            return False
-
-        profile_dir = Path(self.attach_user_data_dir)
-        try:
-            profile_dir.mkdir(parents=True, exist_ok=True)
-        except Exception as exc:
-            self._append_log(log_key, f"[ERR] Gagal siapkan profile attach: {exc}")
-            QMessageBox.critical(self, "Gagal Siapkan Profile", f"Gagal membuat profile attach:\n{exc}")
-            return False
-
-        args = [
-            chrome_bin,
-            f"--remote-debugging-port={self.attach_debug_port}",
-            f"--user-data-dir={str(profile_dir)}",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "https://mail.google.com/mail/u/0/#inbox",
-        ]
-        try:
-            subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception as exc:
-            self._append_log(log_key, f"[ERR] Gagal buka browser attach: {exc}")
-            QMessageBox.critical(self, "Gagal Buka Browser Attach", f"{exc}")
-            return False
-
-        self._append_log(
-            log_key,
-            f"[INFO] Browser attach ACREA dibuka: port={self.attach_debug_port} profile={profile_dir}",
-        )
-
-        deadline = time.time() + 25
-        while time.time() < deadline:
-            if self._is_devtools_ready(self.attach_debug_port):
-                self._append_log(log_key, "[INFO] DevTools attach ACREA siap.")
-                return True
-            time.sleep(0.5)
-
-        self._append_log(
-            log_key,
-            f"[ERR] DevTools port {self.attach_debug_port} tidak siap. Browser attach gagal dipakai.",
-        )
-        QMessageBox.critical(
-            self,
-            "Attach Gagal",
-            "Browser ACREA tidak siap untuk di-attach (DevTools tidak aktif).",
-        )
-        return False
-
     def _current_spec(self) -> Optional[ModuleSpec]:
         row = self.table.currentRow()
         if row < 0:
@@ -423,11 +306,6 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Script tidak ditemukan: {spec.script_path}")
             return
 
-        if spec.key == "acrea":
-            self._append_log(spec.key, "[INFO] Menyiapkan browser debugging khusus ACREA...")
-            if not self._ensure_acrea_attach_browser(spec.key):
-                return
-
         proc = QProcess(self)
         proc.setWorkingDirectory(str(spec.folder))
         proc.setProgram(self.python_exec)
@@ -446,13 +324,11 @@ class MainWindow(QMainWindow):
     def _inject_module_env(self, spec: ModuleSpec, env: QProcessEnvironment) -> None:
         if spec.key != "acrea":
             return
-        env.insert("CHROME_ATTACH_EXISTING", "1")
-        env.insert("CHROME_DEBUG_PORT", str(self.attach_debug_port))
+        env.insert("CHROME_ATTACH_EXISTING", "0")
+        env.insert("CHROME_WINDOWS_UC", "1")
         env.insert("CHROME_USER_DATA_DIR", self.attach_user_data_dir)
+        env.insert("CHROME_PROFILE_DIR", "Default")
         env.insert("CHROME_CLONE_PROFILE", "0")
-        # Default timeout cukup panjang untuk first-launch.
-        if not env.contains("CHROME_ATTACH_TIMEOUT"):
-            env.insert("CHROME_ATTACH_TIMEOUT", "120")
 
     def _read_stdout(self, key: str) -> None:
         rt = self.modules[key]

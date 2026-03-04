@@ -77,15 +77,21 @@ def resolve_chrome_binary():
 	return ""
 
 
-def detect_chrome_major(chrome_bin):
-	if not chrome_bin:
-		return 0
-	try:
-		proc = subprocess.run([chrome_bin, "--version"], capture_output=True, text=True, check=False)
-	except Exception:
-		return 0
-	raw = f"{proc.stdout}\n{proc.stderr}"
-	m = re.search(r"(\d+)\.\d+\.\d+\.\d+", raw)
+def default_windows_uc_user_data_dir():
+	if os.name != "nt":
+		return ""
+	override = (os.environ.get("CHROME_USER_DATA_DIR") or "").strip()
+	if override:
+		return override
+	local_app_data = os.environ.get("LOCALAPPDATA", "")
+	if not local_app_data:
+		return ""
+	module_tag = f"{os.path.basename(os.path.dirname(__file__))}_{os.path.splitext(os.path.basename(__file__))[0]}"
+	return os.path.join(local_app_data, "CitiusBossAuto", "uc_profiles", module_tag)
+
+
+def _extract_chrome_major(raw):
+	m = re.search(r"(\d+)\.\d+\.\d+\.\d+", raw or "")
 	if not m:
 		return 0
 	try:
@@ -94,12 +100,54 @@ def detect_chrome_major(chrome_bin):
 		return 0
 
 
+def detect_chrome_major(chrome_bin):
+	if not chrome_bin:
+		return 0
+	if os.name == "nt":
+		# Windows: baca versi dari metadata file executable agar tidak memicu spawn Chrome.
+		escaped = chrome_bin.replace("'", "''")
+		ps = f"(Get-Item -LiteralPath '{escaped}').VersionInfo.ProductVersion"
+		try:
+			proc = subprocess.run(
+				["powershell", "-NoProfile", "-Command", ps],
+				capture_output=True,
+				text=True,
+				check=False,
+				timeout=8,
+			)
+			major = _extract_chrome_major(f"{proc.stdout}\n{proc.stderr}")
+			if major > 0:
+				return major
+		except Exception:
+			pass
+	try:
+		proc = subprocess.run([chrome_bin, "--version"], capture_output=True, text=True, check=False, timeout=8)
+	except Exception:
+		return 0
+	return _extract_chrome_major(f"{proc.stdout}\n{proc.stderr}")
+
+
 def build_uc_driver(chrome_options):
 	driver_kwargs = {"options": chrome_options}
 	chrome_bin = resolve_chrome_binary()
 	if chrome_bin:
 		chrome_options.binary_location = chrome_bin
 		driver_kwargs["browser_executable_path"] = chrome_bin
+	if os.name == "nt":
+		user_data_dir = default_windows_uc_user_data_dir()
+		profile_dir = (os.environ.get("CHROME_PROFILE_DIR") or "Default").strip()
+		if user_data_dir:
+			try:
+				os.makedirs(user_data_dir, exist_ok=True)
+			except Exception:
+				pass
+			chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
+			print("WINDOWS UC user-data-dir:", user_data_dir)
+		if profile_dir:
+			chrome_options.add_argument(f"--profile-directory={profile_dir}")
+			print("WINDOWS UC profile-directory:", profile_dir)
+		chrome_options.add_argument("--no-first-run")
+		chrome_options.add_argument("--no-default-browser-check")
 	chrome_major = detect_chrome_major(chrome_bin)
 	if chrome_major > 0:
 		driver_kwargs["version_main"] = chrome_major
@@ -109,6 +157,8 @@ def build_uc_driver(chrome_options):
 	try:
 		return uc.Chrome(**driver_kwargs)
 	except Exception as exc:
+		if os.name == "nt":
+			raise
 		# Fallback jika UC mengambil driver major yang tidak cocok.
 		msg = str(exc)
 		m = re.search(r"Current browser version is (\d+)\.", msg)

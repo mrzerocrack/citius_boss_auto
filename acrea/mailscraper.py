@@ -151,15 +151,9 @@ def _extract_chrome_major(raw):
 def detect_chrome_major(chrome_bin):
     if not chrome_bin:
         return 0
-    try:
-        proc = subprocess.run([chrome_bin, "--version"], capture_output=True, text=True, check=False, timeout=8)
-        major = _extract_chrome_major(f"{proc.stdout}\n{proc.stderr}")
-        if major > 0:
-            return major
-    except Exception:
-        pass
 
     if os.name == "nt":
+        # Windows: baca versi executable langsung agar tidak memicu spawn Chrome.
         escaped = chrome_bin.replace("'", "''")
         ps = f"(Get-Item -LiteralPath '{escaped}').VersionInfo.ProductVersion"
         try:
@@ -175,6 +169,14 @@ def detect_chrome_major(chrome_bin):
                 return major
         except Exception:
             pass
+
+    try:
+        proc = subprocess.run([chrome_bin, "--version"], capture_output=True, text=True, check=False, timeout=8)
+        major = _extract_chrome_major(f"{proc.stdout}\n{proc.stderr}")
+        if major > 0:
+            return major
+    except Exception:
+        pass
     return 0
 
 
@@ -719,7 +721,56 @@ def make_driver():
                 raise last_exc
             raise
 
-    # Windows tetap pakai selenium native + fallback attach.
+    # Windows: opsional pakai UC + profile persisten (default untuk GUI Citius).
+    if os.name == "nt" and env_truthy("CHROME_WINDOWS_UC", "0"):
+        if uc is None:
+            raise RuntimeError("undetected-chromedriver belum terpasang. Install: pip install undetected-chromedriver")
+
+        uc_opts = uc.ChromeOptions()
+        uc_opts.add_argument("--no-first-run")
+        uc_opts.add_argument("--no-default-browser-check")
+        uc_opts.add_argument("--disable-popup-blocking")
+        uc_opts.add_argument("--password-store=basic")
+        uc_opts.add_argument("--remote-allow-origins=*")
+
+        if chrome_bin:
+            uc_opts.binary_location = chrome_bin
+
+        local_app_data = os.environ.get("LOCALAPPDATA", "")
+        default_user_data = (
+            os.path.join(local_app_data, "CitiusBossAuto", "acrea_profile") if local_app_data else ""
+        )
+        user_data_dir = (os.environ.get("CHROME_USER_DATA_DIR") or default_user_data).strip()
+        profile_dir = (os.environ.get("CHROME_PROFILE_DIR") or "Default").strip()
+        if user_data_dir:
+            try:
+                os.makedirs(user_data_dir, exist_ok=True)
+            except Exception:
+                pass
+            uc_opts.add_argument(f"--user-data-dir={user_data_dir}")
+            print("[INFO] Windows UC user-data-dir:", user_data_dir)
+        if profile_dir:
+            uc_opts.add_argument(f"--profile-directory={profile_dir}")
+            print("[INFO] Windows UC profile-directory:", profile_dir)
+
+        uc_kwargs = {"options": uc_opts, "use_subprocess": True}
+        if chrome_bin:
+            uc_kwargs["browser_executable_path"] = chrome_bin
+        if chrome_major > 0:
+            uc_kwargs["version_main"] = chrome_major
+
+        try:
+            print("[INFO] Windows UC mode aktif.")
+            return uc.Chrome(**uc_kwargs)
+        except Exception as exc:
+            if env_truthy("CHROME_WINDOWS_UC_RETRY", "0"):
+                print("[WARN] Windows UC launch gagal, retry use_subprocess=False:", exc)
+                retry_kwargs = dict(uc_kwargs)
+                retry_kwargs["use_subprocess"] = False
+                return uc.Chrome(**retry_kwargs)
+            raise
+
+    # Windows native Selenium + fallback attach.
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--no-first-run")
     chrome_options.add_argument("--no-default-browser-check")
@@ -850,7 +901,11 @@ def has_active_gmail_session(driver_d):
 def run():
     # proxy kamu gak dipakai, jadi diabaikan
     driver_d = make_driver()
-    if os.name == "nt" and not use_existing_chrome_attach_mode():
+    if (
+        os.name == "nt"
+        and not use_existing_chrome_attach_mode()
+        and not env_truthy("CHROME_WINDOWS_UC", "0")
+    ):
         session_ok = wait_for_windows_profile_selection(driver_d)
         if not session_ok:
             print("[INFO] Re-init driver setelah profile picker.")
