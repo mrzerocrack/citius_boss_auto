@@ -25,6 +25,18 @@ try:
 except Exception:
     uc = None
 
+try:
+    import tkinter as tk
+    from tkinter import messagebox
+except Exception:
+    tk = None
+    messagebox = None
+
+try:
+    import win32api  # type: ignore
+except Exception:
+    win32api = None
+
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
@@ -613,6 +625,41 @@ def login(driver_d, data_xpath):
     element_presence(By.XPATH, data_xpath["inbox_button"], 60, driver_d)
 
 
+def notify_info(message, title="INFO"):
+    if win32api is not None:
+        try:
+            win32api.MessageBox(0, message, title, 0x00001000)
+            return
+        except Exception:
+            pass
+    if tk is not None and messagebox is not None:
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            messagebox.showinfo(title, message, parent=root)
+            root.destroy()
+            return
+        except Exception:
+            pass
+    print(f"[{title}] {message}")
+
+
+def wait_manual_gmail_login(driver_d):
+    login_url = (
+        "https://accounts.google.com/v3/signin/identifier?"
+        "continue=https%3A%2F%2Fmail.google.com%2Fmail%2F"
+        "&service=mail&flowName=GlifWebSignIn&flowEntry=ServiceLogin"
+    )
+    driver_d.get(login_url)
+    while True:
+        notify_info("Login manual Gmail dulu. Setelah selesai, klik OK untuk lanjut.", "INFO")
+        if has_active_gmail_session(driver_d):
+            print("[INFO] Login manual Gmail terdeteksi, lanjut proses.")
+            return
+        print("[WARN] Sesi Gmail belum aktif. Ulangi login manual.")
+
+
 def make_driver():
     chrome_bin = resolve_chrome_binary()
     chrome_major = detect_chrome_major(chrome_bin)
@@ -915,14 +962,10 @@ def run():
                 pass
             driver_d = make_driver()
 
-    data_xpath = get_data_xpath()
     if has_active_gmail_session(driver_d):
         print("[INFO] Sesi Gmail aktif, lewati login form.")
     else:
-        driver_d.get(
-            "https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Fmail.google.com%2Fmail%2F&dsh=S-1238628894%3A1769658398148796&ifkv=AXbMIuCW7KLzC_Q8mlpZpr6v_D4HrrIY3tiSN98tJOblxewSwhjwofLkDRONKYNNaEXG-imVAlkN&rip=1&sacu=1&service=mail&flowName=GlifWebSignIn&flowEntry=ServiceLogin"
-        )
-        login(driver_d, data_xpath)
+        wait_manual_gmail_login(driver_d)
 
     while True:
         data_xpath = get_data_xpath()
